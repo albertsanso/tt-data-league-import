@@ -6,7 +6,7 @@ public enum BcnesaCompetition {
     BCN_SENIOR_PROVINCIAL_3A_A(BcnesaCompetitionType.SENIOR, "3,A"),
     BCN_SENIOR_PROVINCIAL_2A_B(BcnesaCompetitionType.SENIOR, "2,B"),
     BCN_SENIOR_PROVINCIAL_2A_A(BcnesaCompetitionType.SENIOR, "2,A"),
-    BCN_SENIOR_PROVINCIAL_1A(BcnesaCompetitionType.SENIOR, "1,A"),
+    BCN_SENIOR_PROVINCIAL_1A(BcnesaCompetitionType.SENIOR, "1"),
     BCN_SENIOR_PREFERENT(BcnesaCompetitionType.PREFERENT, "1,A"),
     BCN_VETERANS_4A_B(BcnesaCompetitionType.VETERANS, "4,B"),
     BCN_VETERANS_4A_A(BcnesaCompetitionType.VETERANS, "4,A"),
