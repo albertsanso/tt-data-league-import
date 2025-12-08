@@ -5,10 +5,10 @@ import org.cttelsamicsterrassa.data.core.domain.repository.ClubRepository;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaMatchResultsDetailCsvFileInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaMatchResultsDetailCsvFileRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.service.BcnesaCsvFileRowInfoExtractor;
+import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.service.BcnesaMatchResultDetailsByLineIterator;
 import org.cttelsamicsterrassa.data.importer.shared.model.ClubNameAndYearInfo;
 import org.cttelsamicsterrassa.data.importer.shared.service.ClubNameGrouppingService;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
-import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsByLineIterator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +25,10 @@ public class BcnesaClubInitialImportService extends LineByLineInitialImportServi
     private final ClubRepository clubRepository;
 
     @Autowired
-    public BcnesaClubInitialImportService(MatchResultDetailsByLineIterator<BcnesaMatchResultsDetailCsvFileRowInfo, BcnesaMatchResultsDetailCsvFileInfo> matchResultDetailsByLineIterator, BcnesaCsvFileRowInfoExtractor rowInfoExtractor, ClubRepository clubRepository) {
+    public BcnesaClubInitialImportService(
+            BcnesaMatchResultDetailsByLineIterator matchResultDetailsByLineIterator,
+            BcnesaCsvFileRowInfoExtractor rowInfoExtractor,
+            ClubRepository clubRepository) {
         super(matchResultDetailsByLineIterator);
         this.rowInfoExtractor = rowInfoExtractor;
         this.clubRepository = clubRepository;

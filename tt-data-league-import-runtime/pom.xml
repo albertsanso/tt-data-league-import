@@ -38,5 +38,10 @@
             <groupId>org.cttelsamicsterrassa</groupId>
             <artifactId>tt-data-league-import-bcnesa-csv-adapter</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.cttelsamicsterrassa</groupId>
+            <artifactId>tt-data-league-import-fedesp-csv-adapter</artifactId>
+        </dependency>
     </dependencies>
 </project>

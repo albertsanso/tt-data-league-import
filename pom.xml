@@ -52,6 +52,12 @@
             </dependency>
 
             <dependency>
+                <groupId>org.cttelsamicsterrassa</groupId>
+                <artifactId>tt-data-league-import-fedesp-csv-adapter</artifactId>
+                <version>0.0.1-SNAPSHOT</version>
+            </dependency>
+
+            <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter</artifactId>
                 <version>3.5.8</version>

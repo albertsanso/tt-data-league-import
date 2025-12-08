@@ -3,7 +3,9 @@ package org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.service;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailCsvFileRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespPlayerCsvInfo;
+import org.springframework.stereotype.Component;
 
+@Component
 public class FedespCsvFileRowInfoExtractor {
 
     public String extractTeamNameFromRowInfo(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
@@ -27,7 +29,8 @@ public class FedespCsvFileRowInfoExtractor {
                 rowInfo.rowInfo()[8],
                 rowInfo.rowInfo()[7],
                 rowInfo.rowInfo()[6],
-                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[0])
+                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[0]),
+                rowInfo.fileInfo().competitionGender()
         );
     }
 
@@ -37,7 +40,8 @@ public class FedespCsvFileRowInfoExtractor {
                 rowInfo.rowInfo()[11],
                 rowInfo.rowInfo()[10],
                 rowInfo.rowInfo()[9],
-                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[1])
+                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[1]),
+                rowInfo.fileInfo().competitionGender()
         );
     }
 }
