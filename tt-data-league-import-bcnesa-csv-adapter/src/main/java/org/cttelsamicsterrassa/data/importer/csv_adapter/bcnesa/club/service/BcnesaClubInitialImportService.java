@@ -34,6 +34,11 @@ public class BcnesaClubInitialImportService extends LineByLineInitialImportServi
         this.clubRepository = clubRepository;
     }
 
+    public void processClubNamesForAllSeason(String baseSeasonsFolder) throws IOException {
+        resetAndLoadTextFilesForAllSeasons(baseSeasonsFolder);
+        importClubNames();
+    }
+
     public void processClubNamesForSeason(String baseSeasonsFolder, String seasonRange) throws IOException {
         resetAndLoadTextFilesForSeason(baseSeasonsFolder, seasonRange);
         importClubNames();

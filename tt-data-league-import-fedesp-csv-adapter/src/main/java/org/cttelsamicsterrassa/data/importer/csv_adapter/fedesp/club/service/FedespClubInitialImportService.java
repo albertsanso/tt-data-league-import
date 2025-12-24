@@ -19,7 +19,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 @Component
-public class FedespClubInitialImportService extends LineByLineInitialImportService<FedespMatchResultsDetailCsvFileRowInfo, FedespMatchResultsDetailCsvFileInfo> {
+public class FedespClubInitialImportService
+        extends LineByLineInitialImportService<FedespMatchResultsDetailCsvFileRowInfo, FedespMatchResultsDetailCsvFileInfo> {
 
     private final ClubRepository clubRepository;
 
@@ -33,6 +34,11 @@ public class FedespClubInitialImportService extends LineByLineInitialImportServi
         super(matchResultDetailsByLineIterator);
         this.clubRepository = clubRepository;
         this.rowInfoExtractor = rowInfoExtractor;
+    }
+
+    public void processClubNamesForAllSeason(String baseSeasonsFolder) throws IOException {
+        resetAndLoadTextFilesForAllSeasons(baseSeasonsFolder);
+        importClubNames();
     }
 
     public void processClubNamesForSeason(String baseSeasonsFolder, String seasonRange) throws IOException {
@@ -57,7 +63,9 @@ public class FedespClubInitialImportService extends LineByLineInitialImportServi
         Pattern clubNameWithTeamNamePattern = Pattern.compile("(['\"]{1,2})(.)(['\"]{1,2})");
 
         List<ClubNameAndYearInfo> filteredTeamNames = matchResultsDetailCsvFileRowInfoList.stream()
-                .filter(rowInfo -> !clubNameWithTeamNamePattern.matcher(rowInfoExtractor.extractTeamNameFromRowInfo(rowInfo)).find())
+                .filter(rowInfo ->
+                        !clubNameWithTeamNamePattern.matcher(rowInfoExtractor.extractTeamNameFromRowInfo(rowInfo))
+                                .find())
                 .map(matchResultsDetailCsvFileRowInfo ->
                         new ClubNameAndYearInfo(
                                 rowInfoExtractor.extractTeamNameFromRowInfo(matchResultsDetailCsvFileRowInfo),
