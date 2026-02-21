@@ -78,7 +78,7 @@ public class FedespClubInitialImportService
     private void createClubIfDoesntExistYet(Club clubToCreate) {
         Optional<Club> existingClub = clubRepository.findByName(clubToCreate.getName());
         if (existingClub.isPresent()) {
-            existingClub.get().updateAllRanges(clubToCreate.getYearRanges());
+            existingClub.get().setYearRanges(clubToCreate.getYearRanges());
             clubRepository.save(existingClub.get());
         } else {
             clubRepository.save(clubToCreate);

@@ -90,7 +90,8 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList = new HashMap<>();
 
         matchResultsDetailCsvFileRowInfoList
-            .parallelStream().forEach(matchResultsDetailCsvFileRowInfo -> {
+            .parallelStream()
+            .forEach(matchResultsDetailCsvFileRowInfo -> {
 
             String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
             String gender = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGender();
@@ -109,7 +110,7 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
             String fullTeamABCId = season + competitionCategory + matchDayNumber + competitionGroup + teamNameABC; // NOT REALLY USED
             String fullTeamXYZId = season + competitionCategory + matchDayNumber + competitionGroup + teamNameXYZ; // NOT REALLY USED
 
-            String gameId = season+"-"+competitionCategory+"-"+matchDayNumber+"-"+competitionGroup+"-"+rowInfo.acbPlayer().playerLicense()+"-"+rowInfo.xyzPlayer().playerLicense();
+            //String gameId = season+"-"+competitionCategory+"-"+matchDayNumber+"-"+competitionGroup+"-"+rowInfo.acbPlayer().playerLicense()+"-"+rowInfo.xyzPlayer().playerLicense();
             MatchInfoKey matchInfoKey = new MatchInfoKey(
                     season,
                     competitionType,
@@ -121,8 +122,9 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
                     rowInfo.acbPlayer().teamName(),
                     rowInfo.xyzPlayer().teamName());
 
-            SeasonPlayerResult seasonPlayerResultAbc = createSeasonPlayerAndResults(rowInfo.acbPlayer(), allClubsList, allPracticionersList, season, gameId, fullTeamABCId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
-            SeasonPlayerResult seasonPlayerResultXyz = createSeasonPlayerAndResults(rowInfo.xyzPlayer(), allClubsList, allPracticionersList, season, gameId, fullTeamXYZId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+            SeasonPlayerResult seasonPlayerResultAbc = createSeasonPlayerAndResults(rowInfo.acbPlayer(), allClubsList, allPracticionersList, season, "", fullTeamABCId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+            SeasonPlayerResult seasonPlayerResultXyz = createSeasonPlayerAndResults(rowInfo.xyzPlayer(), allClubsList, allPracticionersList, season, "", fullTeamXYZId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+
 
             String uniqueRowId = "%s-%s-%s-%s-%s-%s-%s-%s-%s-%s".formatted(
                     competitionCategory.strip(),
@@ -157,6 +159,7 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
                 );
                 playersSingleMatchRepository.save(playersSingleMatch);
             }
+
         });
     }
 
@@ -166,9 +169,16 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
 
         SeasonPlayerResult seasonPlayerResult = null;
         if (optInferredClub.isPresent() && optInferredPracticioner.isPresent()) {
-            Club club = optInferredClub.get();
-            Practicioner practicioner = optInferredPracticioner.get();
-            seasonPlayerResult = createSeasonPlayerAndResultsForClub(club, practicioner, playerInfo, seasonRange, uniqueRowId, fullTeamId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+            seasonPlayerResult = createSeasonPlayerAndResultsForClub(
+                    optInferredClub.get(),
+                    optInferredPracticioner.get(),
+                    playerInfo,
+                    seasonRange,
+                    uniqueRowId,
+                    fullTeamId,
+                    matchInfoKey,
+                    mapOfMatchesList,
+                    matchResultsDetailCsvFileRowInfo);
         } else {
 
             System.out.println("UNABLE TO INFER CLUB BY TEAM NAME: "+playerInfo.teamName());
@@ -189,42 +199,27 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
                 .max(Comparator.comparingDouble(practicioner -> NameSimilarity.similarity(practicionerName, practicioner.getFullName())));
     }
 
-    public static void main(String[] args) {
-        List<Practicioner> practicioners = List.of(
-                Practicioner.createNew("Juan Carlos", "JUAN CARLOS", "Juan Carlos", null),
-                Practicioner.createNew("Miguel Angel", "MIGUEL ANGEL", "Miguel Angel", null),
-                Practicioner.createNew("Luis Miguel", "LUIS MIGUEL", "Luis Miguel", null),
-                Practicioner.createNew("Jose Antonio", "JOSE ANTONIO", "Jose Antonio", null),
-                Practicioner.createNew("Ana Maria", "ANA MARIA", "Ana Maria", null),
-                Practicioner.createNew("Maria del Carmen", "MARIA DEL CARMEN", "Maria del Carmen", null),
-                Practicioner.createNew("Juan Antonio", "JUAN ANTONIO", "Juan Antonio", null),
-                Practicioner.createNew("Jose Luis", "JOSE LUIS", "Jose Luis", null),
-                Practicioner.createNew("Ana Isabel", "ANA ISABEL", "Ana Isabel", null),
-                Practicioner.createNew("Luis Antonio", "LUIS ANTONIO", "Luis Antonio", null),
-                Practicioner.createNew("Carlos Alberto", "CARLOS ALBERTO", "Carlos Alberto", null),
-                Practicioner.createNew("Juan Jose", "JUAN JOSE", "Juan Jose", null),
-                Practicioner.createNew("Maria Angeles", "MARIA ANGELES", "Maria Angeles", null)
-        );
-
-        inferPracticionerByName("1 Juan Carloss", practicioners).ifPresent(practicioner -> {
-            System.out.println("Matched: " + practicioner.getFullName());
-        });
-    }
-
     private SeasonPlayerResult createSeasonPlayerAndResultsForClub(Club inferredClub, Practicioner inferredPracticioner, FedespPlayerCsvInfo playerInfo, String seasonRange, String uniqueRowId, String fullTeamId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, FedespMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo) {
         SeasonPlayerResult seasonPlayerResult = null;
         Optional<Club> optClub = clubRepository.findByName(inferredClub.getName());
         Optional<Practicioner> optPracticioner = practicionerRepository.findByFullName(inferredPracticioner.getFullName());
         if (optClub.isPresent() && optPracticioner.isPresent()) {
             Club club = optClub.get();
-            //Practicioner practicioner = getOrCreatePracticionerFromPlayerInfo(playerInfo);
             Practicioner practicioner = optPracticioner.get();
             ClubMember clubMember = getOrCreateClubMember(club, practicioner, seasonRange);
-            SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(playerInfo, practicioner, club, clubMember, seasonRange);
+            SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(practicioner, clubMember, seasonRange, new License("ESP", playerInfo.playerLicense()));
 
+            CompetitionInfo competitionInfo = new CompetitionInfo(
+                    matchInfoKey.competitionType(),
+                    matchInfoKey.competitionCategory(),
+                    matchInfoKey.competitionScope(),
+                    matchInfoKey.competitionScopeTag(),
+                    matchInfoKey.competitionGroup(),
+                    matchResultsDetailCsvFileRowInfo.fileInfo().competitionGender()
+            );
 
-            seasonPlayerResult = getOrCreateSeasonPlayerResult(seasonRange, matchInfoKey, playerInfo, seasonPlayer, uniqueRowId);
-            addSeasonPlayerResultToMap(seasonPlayerResult, matchInfoKey.teamNameAbc(), matchInfoKey.teamNameXyz(), mapOfMatchesList);
+            seasonPlayerResult = getOrCreateSeasonPlayerResult(seasonRange, competitionInfo, matchInfoKey, playerInfo, seasonPlayer, uniqueRowId);
+            //addSeasonPlayerResultToMap(seasonPlayerResult, matchInfoKey.teamNameAbc(), matchInfoKey.teamNameXyz(), mapOfMatchesList);
 
         } else {
             System.out.println("UNABLE TO FIND CLUB BY TEAM NAME: "+inferredClub.getName());
@@ -234,15 +229,15 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         return seasonPlayerResult;
     }
 
-    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, MatchInfoKey matchInfoKey, FedespPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String uniqueRowId) {
+    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, CompetitionInfo competitionInfo, MatchInfoKey matchInfoKey, FedespPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String uniqueRowId) {
         SeasonPlayerResult seasonPlayerResult = seasonPlayerResultRepository
                 .findFor(
                         seasonRange,
-                        matchInfoKey.competitionType(),
-                        matchInfoKey.competitionCategory(),
-                        matchInfoKey.competitionScope(),
-                        matchInfoKey.competitionScopeTag(),
-                        matchInfoKey.competitionGroup(),
+                        competitionInfo.competitionType(),
+                        competitionInfo.competitionCategory(),
+                        competitionInfo.competitionScope(),
+                        competitionInfo.competitionScopeTag(),
+                        competitionInfo.competitionGroup(),
                         matchInfoKey.matchDayNumber(),
                         playerInfo.playerLetter(),
                         uniqueRowId,
@@ -250,14 +245,7 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
                 )
                 .orElseGet(() -> SeasonPlayerResult.createNew(
                         seasonRange,
-                        new CompetitionInfo(
-                                matchInfoKey.competitionType(),
-                                matchInfoKey.competitionCategory(),
-                                matchInfoKey.competitionScope(),
-                                matchInfoKey.competitionScopeTag(),
-                                matchInfoKey.competitionGroup(),
-                                null
-                        ),
+                        competitionInfo,
                         seasonPlayer,
                         new MatchInfo(
                                 matchInfoKey.matchDayNumber(),
@@ -321,13 +309,13 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         return clubMember;
     }
 
-    private SeasonPlayer getOrCreateSeasonPlayer(FedespPlayerCsvInfo playerInfo, Practicioner practicioner,  Club club, ClubMember clubMember, String seasonRange) {
+    private SeasonPlayer getOrCreateSeasonPlayer(Practicioner practicioner,  ClubMember clubMember, String seasonRange, License license) {
         SeasonPlayer seasonPlayer = seasonPlayerRepository
-                //.findByPracticionerIdClubIdSeason(practicionerFromPlayer.getId(), clubMember.getClub().getId(), seasonRange)
-                .findByPracticionerNameAndClubNameAndSeason(practicioner.getFullName(), club.getName(), seasonRange)
+                .findByPracticionerIdClubIdSeason(practicioner.getId(), clubMember.getClub().getId(), seasonRange)
+                //.findByPracticionerNameAndClubNameAndSeason(practicioner.getFullName(), clubMember.getClub().getName(), seasonRange)
                 .orElseGet(() -> SeasonPlayer.createNew(
                         clubMember,
-                        new License("ESP", playerInfo.playerLicense()),
+                        license,
                         seasonRange
                 ));
         seasonPlayerRepository.save(seasonPlayer);
