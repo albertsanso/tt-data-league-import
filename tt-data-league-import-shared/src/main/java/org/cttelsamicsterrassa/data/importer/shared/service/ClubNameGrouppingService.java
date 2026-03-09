@@ -25,6 +25,8 @@ public class ClubNameGrouppingService {
         Map<String, Set<String>> groupsAndYears = new LinkedHashMap<>();
         Map<String, List<String>> outputClubNamesAndYears = new LinkedHashMap<>();
 
+        CompletionTracker completionTracker = CompletionTracker.buildTracker(items.size(), 5, "Grouping club names");
+
         for (ClubNameAndYearInfo item : items) {
             String normalizedItem = normalize(item.clubName());
             String bestRoot = null;
@@ -47,6 +49,8 @@ public class ClubNameGrouppingService {
                 groups.put(item.clubName(), new ArrayList<>(Collections.singletonList(item.clubName())));
                 groupsAndYears.put(item.clubName(), new HashSet<>(Collections.singletonList(item.yearRange())));
             }
+
+            completionTracker.trackProcessCompletion();
         }
 
         // Optionally refine roots by picking the common core phrase

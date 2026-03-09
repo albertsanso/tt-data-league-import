@@ -16,6 +16,8 @@ public class PracticionerNameSimilarityService {
     public static List<String> reduceToSimilarClustersOfNames(List<String> items) {
         Map<String, List<String>> groups = new LinkedHashMap<>();
 
+        CompletionTracker completionTracker = CompletionTracker.buildTracker(items.size(), 5, "Grouping practicioner names");
+
         for (String practicionerName : items) {
             String normalizedItem = normalize(practicionerName);
             String bestRoot = null;
@@ -36,6 +38,8 @@ public class PracticionerNameSimilarityService {
             } else {
                 groups.put(practicionerName, new ArrayList<>(Collections.singletonList(practicionerName)));
             }
+
+            completionTracker.trackProcessCompletion();
         }
 
         groups.replaceAll((k, v) ->

@@ -10,18 +10,19 @@ import org.cttelsamicsterrassa.data.core.domain.model.PlayersSingleMatch;
 import org.cttelsamicsterrassa.data.core.domain.model.Practicioner;
 import org.cttelsamicsterrassa.data.core.domain.model.SeasonPlayer;
 import org.cttelsamicsterrassa.data.core.domain.model.SeasonPlayerResult;
+import org.cttelsamicsterrassa.data.core.domain.model.TeamRole;
 import org.cttelsamicsterrassa.data.core.domain.repository.ClubMemberRepository;
 import org.cttelsamicsterrassa.data.core.domain.repository.ClubRepository;
 import org.cttelsamicsterrassa.data.core.domain.repository.PlayersSingleMatchRepository;
 import org.cttelsamicsterrassa.data.core.domain.repository.PracticionerRepository;
 import org.cttelsamicsterrassa.data.core.domain.repository.SeasonPlayerRepository;
 import org.cttelsamicsterrassa.data.core.domain.repository.SeasonPlayerResultRepository;
-import org.cttelsamicsterrassa.data.importer.shared.model.MatchInfoKey;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaMatchResultsDetailCsvFileInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaMatchResultsDetailCsvFileRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaMatchResultsDetailRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaPlayerCsvInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.service.BcnesaCsvFileRowInfoExtractor;
+import org.cttelsamicsterrassa.data.importer.shared.model.MatchInfoKey;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
 import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsByLineIterator;
 import org.cttelsamicsterrassa.data.importer.shared.service.name.NameSimilarity;
@@ -114,8 +115,8 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                             rowInfo.acbPlayer().teamName(),
                             rowInfo.xyzPlayer().teamName());
 
-                    SeasonPlayerResult seasonPlayerResultAbc = createSeasonPlayerAndResults(rowInfo.acbPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
-                    SeasonPlayerResult seasonPlayerResultXyz = createSeasonPlayerAndResults(rowInfo.xyzPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+                    SeasonPlayerResult seasonPlayerResultAbc = createSeasonPlayerAndResults(rowInfo.acbPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, rowInfo.acbPlayer().playerLetter(), TeamRole.LOCAL);
+                    SeasonPlayerResult seasonPlayerResultXyz = createSeasonPlayerAndResults(rowInfo.xyzPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, rowInfo.xyzPlayer().playerLetter(),TeamRole.VISITOR);
 
                     String uniqueRowId = "%s-%s-%s-%s-%s-%s-%s-%s-%s-%s-%s".formatted(
                             rowInfo.acbPlayer().teamName(),
@@ -155,7 +156,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                 });
     }
 
-    private SeasonPlayerResult createSeasonPlayerAndResults(BcnesaPlayerCsvInfo playerInfo, List<Club> allClubsList, List<Practicioner> allPracticionerList, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo) {
+    private SeasonPlayerResult createSeasonPlayerAndResults(BcnesaPlayerCsvInfo playerInfo, List<Club> allClubsList, List<Practicioner> allPracticionerList, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo, String opponentLetter, TeamRole teamRole) {
         Optional<Club> optInferredClub = inferClubByTeamName(playerInfo.teamName(), allClubsList);
         Optional<Practicioner> optInferredPracticioner = inferPracticionerByName(playerInfo.playerName(), allPracticionerList);
 
@@ -163,7 +164,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         if (optInferredClub.isPresent()) {
             Club club = optInferredClub.get();
             Practicioner practicioner = optInferredPracticioner.get();
-            seasonPlayerResult = createSeasonPlayerAndResultsForClub(club, practicioner, playerInfo, seasonRange, uniqueRowId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo);
+            seasonPlayerResult = createSeasonPlayerAndResultsForClub(club, practicioner, playerInfo, seasonRange, uniqueRowId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, opponentLetter, teamRole);
         } else {
 
             System.out.println("UNABLE TO INFER CLUB BY TEAM NAME: "+playerInfo.teamName());
@@ -183,7 +184,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                 .max(Comparator.comparingDouble(practicioner -> NameSimilarity.similarity(practicionerName, practicioner.getFullName())));
     }
 
-    private SeasonPlayerResult createSeasonPlayerAndResultsForClub(Club inferredClub, Practicioner inferredPracticioner, BcnesaPlayerCsvInfo playerInfo, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo) {
+    private SeasonPlayerResult createSeasonPlayerAndResultsForClub(Club inferredClub, Practicioner inferredPracticioner, BcnesaPlayerCsvInfo playerInfo, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo, String opponentLetter, TeamRole teamRole) {
         SeasonPlayerResult seasonPlayerResult = null;
         Optional<Club> optClub = clubRepository.findByName(inferredClub.getName());
         Optional<Practicioner> optPracticioner = practicionerRepository.findByFullName(inferredPracticioner.getFullName());
@@ -196,7 +197,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(playerInfo, practicioner, club, clubMember, seasonRange);
 
 
-            seasonPlayerResult = getOrCreateSeasonPlayerResult(seasonRange, matchInfoKey, playerInfo, seasonPlayer, uniqueRowId);
+            seasonPlayerResult = getOrCreateSeasonPlayerResult(seasonRange, matchInfoKey, playerInfo, seasonPlayer, opponentLetter, teamRole);
             addSeasonPlayerResultToMap(seasonPlayerResult, matchInfoKey.teamNameAbc(), matchInfoKey.teamNameXyz(), mapOfMatchesList);
 
         } else {
@@ -207,7 +208,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         return seasonPlayerResult;
     }
 
-    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, MatchInfoKey matchInfoKey, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String uniqueRowId) {
+    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, MatchInfoKey matchInfoKey, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String opponentLetter, TeamRole teamRole) {
         SeasonPlayerResult seasonPlayerResult = seasonPlayerResultRepository
                 .findFor(
                         seasonRange,
@@ -218,7 +219,8 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                         matchInfoKey.competitionGroup(),
                         matchInfoKey.matchDayNumber(),
                         playerInfo.playerLetter(),
-                        uniqueRowId,
+                        buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole),
+                        teamRole,
                         seasonPlayer.getClubMember().getClub().getId()
                 )
                 .orElseGet(() -> SeasonPlayerResult.createNew(
@@ -238,12 +240,21 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                             playerInfo.playerLetter(),
                             new int[] {},
                             playerInfo.playerScore(),
-                            uniqueRowId
-                    )
+                            buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole)
+                    ),
+                        teamRole
                 ));
 
         seasonPlayerResultRepository.save(seasonPlayerResult);
         return seasonPlayerResult;
+    }
+
+    private static String buildPlayersPairingKey(String playerLetter, String opponentLetter, TeamRole teamRole) {
+        if (teamRole == TeamRole.LOCAL) {
+            return "%s-%s".formatted(playerLetter, opponentLetter);
+        } else {
+            return "%s-%s".formatted(opponentLetter, playerLetter);
+        }
     }
 
     private void addSeasonPlayerResultToMap(SeasonPlayerResult seasonPlayerResult, String abcTeamName, String xyzTeamName, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList) {

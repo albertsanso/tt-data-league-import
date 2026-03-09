@@ -8,6 +8,7 @@ import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.service.F
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.service.FedespMatchResultDetailsByLineIterator;
 import org.cttelsamicsterrassa.data.importer.shared.model.ClubNameAndYearInfo;
 import org.cttelsamicsterrassa.data.importer.shared.service.ClubNameGrouppingService;
+import org.cttelsamicsterrassa.data.importer.shared.service.CompletionTracker;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -52,16 +53,20 @@ public class FedespClubInitialImportService
 
     private void saveClubNamesInfo(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileInfos) {
         Map<String, List<String>> cleanClubNamesAndYears = extractClubNamesFromTeamNames(fedespMatchResultsDetailCsvFileInfos);
+
+        CompletionTracker completionTracker = CompletionTracker.buildTracker(cleanClubNamesAndYears.size(), 10, "Club import");
+
         cleanClubNamesAndYears.keySet().forEach(cleanClubName -> {
             Club clubToCreate = Club.createNew(cleanClubName);
             cleanClubNamesAndYears.get(cleanClubName).forEach(clubToCreate::addYearRange);
             createClubIfDoesntExistYet(clubToCreate);
+
+            completionTracker.trackProcessCompletion();
         });
     }
 
     private Map<String, List<String>> extractClubNamesFromTeamNames(List<FedespMatchResultsDetailCsvFileRowInfo> matchResultsDetailCsvFileRowInfoList) {
         Pattern clubNameWithTeamNamePattern = Pattern.compile("(['\"]{1,2})(.)(['\"]{1,2})");
-
         List<ClubNameAndYearInfo> filteredTeamNames = matchResultsDetailCsvFileRowInfoList.stream()
                 .filter(rowInfo ->
                         !clubNameWithTeamNamePattern.matcher(rowInfoExtractor.extractTeamNameFromRowInfo(rowInfo))

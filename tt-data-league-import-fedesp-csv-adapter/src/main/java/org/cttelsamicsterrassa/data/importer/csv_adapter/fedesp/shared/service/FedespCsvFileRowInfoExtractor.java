@@ -13,34 +13,32 @@ public class FedespCsvFileRowInfoExtractor {
     }
 
     public FedespMatchResultsDetailRowInfo extractMatchDetailsRowInfo(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
-        FedespPlayerCsvInfo abcPlayer = parsePlayerABC(rowInfo);
-        FedespPlayerCsvInfo xyzPlayer = parsePlayerXYZ(rowInfo);
-        int matchDayNumber = Integer.parseInt(rowInfo.rowInfo()[1]);
+        FedespPlayerCsvInfo localPlayer = parsePlayerLocal(rowInfo);
+        FedespPlayerCsvInfo visitorPlayer = parsePlayerVisitor(rowInfo);
+        //int matchDayNumber = Integer.parseInt(rowInfo.rowInfo()[1]);
+        int matchDayNumber = Integer.parseInt(rowInfo.rowInfo()[0].replaceAll("\\D+", ""));
         String gameMode = rowInfo.rowInfo()[0];
-        return new FedespMatchResultsDetailRowInfo(abcPlayer, xyzPlayer, matchDayNumber, gameMode);
+        return new FedespMatchResultsDetailRowInfo(localPlayer, visitorPlayer, matchDayNumber, gameMode);
     }
 
-    private FedespPlayerCsvInfo parsePlayerABC(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
-        if (rowInfo.rowInfo().length > 23) {
-            System.out.println();
-        }
+    private FedespPlayerCsvInfo parsePlayerLocal(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
         return new FedespPlayerCsvInfo(
                 rowInfo.rowInfo()[3],
-                rowInfo.rowInfo()[8],
-                rowInfo.rowInfo()[7],
-                rowInfo.rowInfo()[6],
-                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[0]),
+                rowInfo.rowInfo()[10],
+                rowInfo.rowInfo()[13],
+                rowInfo.rowInfo()[14],
+                Integer.parseInt(rowInfo.rowInfo()[26]),
                 rowInfo.fileInfo().competitionGender()
         );
     }
 
-    private FedespPlayerCsvInfo parsePlayerXYZ(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
+    private FedespPlayerCsvInfo parsePlayerVisitor(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {
         return new FedespPlayerCsvInfo(
                 rowInfo.rowInfo()[5],
                 rowInfo.rowInfo()[11],
-                rowInfo.rowInfo()[10],
-                rowInfo.rowInfo()[9],
-                Integer.parseInt(rowInfo.rowInfo()[21].split("-")[1]),
+                rowInfo.rowInfo()[17],
+                rowInfo.rowInfo()[18],
+                Integer.parseInt(rowInfo.rowInfo()[27]),
                 rowInfo.fileInfo().competitionGender()
         );
     }

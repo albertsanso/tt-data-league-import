@@ -14,7 +14,6 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import java.io.IOException;
-import java.util.List;
 
 @SpringBootApplication(scanBasePackages = {
         "org.cttelsamicsterrassa"
@@ -49,11 +48,13 @@ public class ImporterApplication implements CommandLineRunner {
     public void run(String... args) throws Exception {
         long tsBeguin = System.currentTimeMillis();
 
-        String baseFolderFedesp = "C:\\git\\fedesp-data-csv\\resources\\match-results-details";
+        String baseFolderFedesp = "C:\\git\\fedesp-data-csv\\resources\\match-results-details\\v3-claude-flat";
+        //String baseFolderFedesp = "C:\\git\\fedesp-data-extractor-python\\resources\\match-results-details\\v3-claude-flat";
         String baseFolderbcnesa = "C:\\git\\bcnesa-data-csv\\resources\\matches-results-details\\csv";
 
         //fedespPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderFedesp);
         //fedespClubInitialImportService.processClubNamesForAllSeason(baseFolderFedesp);
+
         //fedespPlayerAndResultsImportService.processForAllSeasons(baseFolderFedesp);
         fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2018-2019");
 
@@ -87,9 +88,7 @@ public class ImporterApplication implements CommandLineRunner {
 
     private void processFedesp(String season) throws IOException {
         String baseFolder = "C:\\git\\fedesp-data-csv\\resources\\match-results-details";
-        //processFedespClubAndMembersInfoForFolderAndBySeason(baseFolder, season);
         processFedespPracticionersInfoForFolderAndBySeason(baseFolder, season);
-        //processFedespMatchesAndResultsInfoForFolderAndBySeason(baseFolder, season);
     }
 
     private void processFedespClubAndMembersInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {

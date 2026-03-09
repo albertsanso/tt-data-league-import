@@ -7,6 +7,7 @@ import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.service.FedespCsvFileRowInfoExtractor;
 import org.cttelsamicsterrassa.data.importer.shared.model.PracticionerNameAndYearInfo;
+import org.cttelsamicsterrassa.data.importer.shared.service.CompletionTracker;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
 import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsByLineIterator;
 import org.cttelsamicsterrassa.data.importer.shared.service.PracticionerNameGrouppingService;
@@ -49,11 +50,17 @@ public class FedespPracticionerInitialImportService extends
     }
 
     private void savePracticionersInfo(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileRowInfos) {
-        extractPracticionersNames(fedespMatchResultsDetailCsvFileRowInfos).forEach(practicionerName -> {
+        List<String> practicionersNamesList = extractPracticionersNames(fedespMatchResultsDetailCsvFileRowInfos);
+
+        CompletionTracker completionTracker = CompletionTracker.buildTracker(practicionersNamesList.size(), 10, "Practicioner import");
+
+        practicionersNamesList.forEach(practicionerName -> {
             Practicioner practicionerToCreate = Practicioner.createNew(practicionerName, practicionerName, practicionerName, new Date());
             if (practicionerRepository.findByFullName(practicionerName).isEmpty()) {
                 practicionerRepository.save(practicionerToCreate);
             }
+
+            completionTracker.trackProcessCompletion();
         });
     }
 
@@ -62,10 +69,10 @@ public class FedespPracticionerInitialImportService extends
         return PracticionerNameSimilarityService.reduceToSimilarClustersOfNames(fedespMatchResultsDetailCsvFileRowInfos.stream()
                 .map(rowInfo -> {
                     FedespMatchResultsDetailRowInfo fedespMatchResultsDetailRowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(rowInfo);
-                    String abcPracticionerName = fedespMatchResultsDetailRowInfo.acbPlayer().playerName();
-                    String xyzPracticionerName = fedespMatchResultsDetailRowInfo.xyzPlayer().playerName();
+                    String localPracticionerName = fedespMatchResultsDetailRowInfo.localPlayer().playerName();
+                    String visitorPracticionerName = fedespMatchResultsDetailRowInfo.visitorPlayer().playerName();
 
-                    return List.of(abcPracticionerName, xyzPracticionerName);
+                    return List.of(localPracticionerName, visitorPracticionerName);
                 })
                 .flatMap(List::stream)
                 .distinct().toList());
@@ -76,18 +83,18 @@ public class FedespPracticionerInitialImportService extends
         List<PracticionerNameAndYearInfo> list = fedespMatchResultsDetailCsvFileRowInfos.stream()
                 .map(rowInfo -> {
                     FedespMatchResultsDetailRowInfo fedespMatchResultsDetailRowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(rowInfo);
-                    String abcPracticionerName = fedespMatchResultsDetailRowInfo.acbPlayer().playerName();
-                    PracticionerNameAndYearInfo abcPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
-                            abcPracticionerName,
+                    String localPracticionerName = fedespMatchResultsDetailRowInfo.localPlayer().playerName();
+                    PracticionerNameAndYearInfo localPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
+                            localPracticionerName,
                             rowInfo.fileInfo().season()
                     );
-                    String xyzPracticionerName = fedespMatchResultsDetailRowInfo.xyzPlayer().playerName();
-                    PracticionerNameAndYearInfo xyzPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
-                            xyzPracticionerName,
+                    String visitorPracticionerName = fedespMatchResultsDetailRowInfo.visitorPlayer().playerName();
+                    PracticionerNameAndYearInfo visitorPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
+                            visitorPracticionerName,
                             rowInfo.fileInfo().season()
                     );
 
-                    return List.of(abcPracticionerNameAndYearInfo, xyzPracticionerNameAndYearInfo);
+                    return List.of(localPracticionerNameAndYearInfo, visitorPracticionerNameAndYearInfo);
                 })
                 .flatMap(List::stream)
                 .filter(practicionerNameAndYearInfo -> practicionerNameAndYearInfo.practicionerName().toLowerCase().contains("campos"))
