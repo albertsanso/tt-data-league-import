@@ -56,7 +56,7 @@ public class ImporterApplication implements CommandLineRunner {
         //fedespClubInitialImportService.processClubNamesForAllSeason(baseFolderFedesp);
 
         //fedespPlayerAndResultsImportService.processForAllSeasons(baseFolderFedesp);
-        fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2018-2019");
+        fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2023-2024");
 
         //bcnesaPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderbcnesa);
         //bcnesaClubInitialImportService.processClubNamesForAllSeason(baseFolderbcnesa);

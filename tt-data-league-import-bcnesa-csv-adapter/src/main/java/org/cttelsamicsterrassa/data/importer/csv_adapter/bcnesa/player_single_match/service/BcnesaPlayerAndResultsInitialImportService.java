@@ -132,7 +132,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                             seasonPlayerResultXyz.getPlayerLetter()
                     );
 
-                    Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultAbcIdAndSeasonPlayerResultXyzIdAndUniqueId(seasonPlayerResultAbc.getId(), seasonPlayerResultXyz.getId(), uniqueRowId);
+                    Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultLocalIdAndSeasonPlayerResultVisitorIdAndUniqueId(seasonPlayerResultAbc.getId(), seasonPlayerResultXyz.getId(), uniqueRowId);
                     if (optPlayersSingleMatch.isEmpty()) {
 
                         CompetitionInfo competitionInfo = new CompetitionInfo(

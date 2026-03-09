@@ -140,18 +140,18 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
         String competitionGroup = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGroup();
         int matchDayNumber = rowInfo.matchDayNumber();
-        String teamNameABC = rowInfo.localPlayer().teamName();
-        String teamNameXYZ = rowInfo.visitorPlayer().teamName();
+        String teamNameLocal = rowInfo.localPlayer().teamName();
+        String teamNameVisitor = rowInfo.visitorPlayer().teamName();
 
         return "%s-%s-%s-%s-%s-%s-%s-%s-%s-%s".formatted(
                 competitionCategory.strip(),
                 season.strip(),
                 competitionGroup,
                 String.valueOf(matchDayNumber),
-                teamNameABC.strip(),
+                teamNameLocal.strip(),
                 local.getSeasonPlayer().getLicense().id().strip(),
                 local.getPlayerLetter().strip(),
-                teamNameXYZ.strip(),
+                teamNameVisitor.strip(),
                 visitor.getSeasonPlayer().getLicense().id().strip(),
                 visitor.getPlayerLetter().strip()
         );
@@ -167,7 +167,7 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         String gender = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGender();
         int matchDayNumber = rowInfo.matchDayNumber();
 
-        Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultAbcIdAndSeasonPlayerResultXyzIdAndUniqueId(local.getId(), visitor.getId(), uniqueRowId);
+        Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultLocalIdAndSeasonPlayerResultVisitorIdAndUniqueId(local.getId(), visitor.getId(), uniqueRowId);
         if (optPlayersSingleMatch.isEmpty()) {
             CompetitionInfo competitionInfo = new CompetitionInfo(
                     competitionType,
