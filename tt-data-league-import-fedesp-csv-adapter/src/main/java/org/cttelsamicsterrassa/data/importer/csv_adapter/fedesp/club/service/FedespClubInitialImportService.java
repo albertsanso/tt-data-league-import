@@ -61,7 +61,7 @@ public class FedespClubInitialImportService
             cleanClubNamesAndYears.get(cleanClubName).forEach(clubToCreate::addYearRange);
             createClubIfDoesntExistYet(clubToCreate);
 
-            completionTracker.trackProcessCompletion();
+            completionTracker.trackIncrement();
         });
     }
 

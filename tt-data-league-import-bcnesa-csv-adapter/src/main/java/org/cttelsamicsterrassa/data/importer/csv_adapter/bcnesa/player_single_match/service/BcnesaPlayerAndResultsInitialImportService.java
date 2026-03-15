@@ -23,6 +23,7 @@ import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaPlayerCsvInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.service.BcnesaCsvFileRowInfoExtractor;
 import org.cttelsamicsterrassa.data.importer.shared.model.MatchInfoKey;
+import org.cttelsamicsterrassa.data.importer.shared.service.CompletionTracker;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
 import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsByLineIterator;
 import org.cttelsamicsterrassa.data.importer.shared.service.name.NameSimilarity;
@@ -30,11 +31,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -87,84 +87,169 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         List<Club> allClubsList = clubRepository.findAll();
         List<Practicioner> allPracticionersList = practicionerRepository.findAll();
 
-        Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList = new HashMap<>();
+        CompletionTracker completionTracker = CompletionTracker.buildTracker(matchResultsDetailCsvFileRowInfoList.size(), 1, "Player and Results import");
 
         matchResultsDetailCsvFileRowInfoList
                 .parallelStream()
                 .forEach(matchResultsDetailCsvFileRowInfo -> {
-
-                    String seasonRange = matchResultsDetailCsvFileRowInfo.fileInfo().season();
-                    String competitionType = matchResultsDetailCsvFileRowInfo.fileInfo().competitionType();
-                    String competitionCategory = matchResultsDetailCsvFileRowInfo.fileInfo().competitionCategory();
-                    String competitionScope = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScope();
-                    String competitionScopeTag = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScopeTag();
-                    String matchDayNumber = matchResultsDetailCsvFileRowInfo.fileInfo().jornada();
-                    String competitionGroup = matchResultsDetailCsvFileRowInfo.fileInfo().group();
-
-                    BcnesaMatchResultsDetailRowInfo rowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(matchResultsDetailCsvFileRowInfo);
-                    String gameId = seasonRange+"-"+competitionType+"-"+competitionCategory+"-"+matchDayNumber+"-"+competitionGroup+"-"+rowInfo.acbPlayer().playerLicense()+"-"+rowInfo.xyzPlayer().playerLicense();
-
-                    MatchInfoKey matchInfoKey = new MatchInfoKey(
-                            seasonRange,
-                            competitionType,
-                            competitionCategory,
-                            competitionScope,
-                            competitionScopeTag,
-                            competitionGroup,
-                            Integer.parseInt(matchDayNumber),
-                            rowInfo.acbPlayer().teamName(),
-                            rowInfo.xyzPlayer().teamName());
-
-                    SeasonPlayerResult seasonPlayerResultAbc = createSeasonPlayerAndResults(rowInfo.acbPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, rowInfo.acbPlayer().playerLetter(), TeamRole.LOCAL);
-                    SeasonPlayerResult seasonPlayerResultXyz = createSeasonPlayerAndResults(rowInfo.xyzPlayer(), allClubsList, allPracticionersList, seasonRange, gameId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, rowInfo.xyzPlayer().playerLetter(),TeamRole.VISITOR);
-
-                    String uniqueRowId = "%s-%s-%s-%s-%s-%s-%s-%s-%s-%s-%s".formatted(
-                            rowInfo.acbPlayer().teamName(),
-                            rowInfo.xyzPlayer().teamName(),
-                            seasonRange,
-                            competitionType,
-                            competitionCategory,
-                            matchDayNumber,
-                            competitionGroup,
-                            seasonPlayerResultAbc.getSeasonPlayer().getLicense().id(),
-                            seasonPlayerResultAbc.getPlayerLetter(),
-                            seasonPlayerResultXyz.getSeasonPlayer().getLicense().id(),
-                            seasonPlayerResultXyz.getPlayerLetter()
-                    );
-
-                    Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultLocalIdAndSeasonPlayerResultVisitorIdAndUniqueId(seasonPlayerResultAbc.getId(), seasonPlayerResultXyz.getId(), uniqueRowId);
-                    if (optPlayersSingleMatch.isEmpty()) {
-
-                        CompetitionInfo competitionInfo = new CompetitionInfo(
-                                competitionType,
-                                competitionCategory,
-                                competitionScope,
-                                competitionScopeTag,
-                                competitionGroup,
-                                "no-gender");
-
-                        PlayersSingleMatch playersSingleMatch = PlayersSingleMatch.createNew(
-                                seasonPlayerResultAbc,
-                                seasonPlayerResultXyz,
-                                seasonRange,
-                                competitionInfo,
-                                Integer.parseInt(matchDayNumber),
-                                uniqueRowId
-                        );
-                        playersSingleMatchRepository.save(playersSingleMatch);
-                    }
+                    processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
+                    completionTracker.trackIncrement();
                 });
     }
 
-    private SeasonPlayerResult createSeasonPlayerAndResults(BcnesaPlayerCsvInfo playerInfo, List<Club> allClubsList, List<Practicioner> allPracticionerList, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo, String opponentLetter, TeamRole teamRole) {
+    private void processMatchResultsDetailsRowInfo(
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            List<Club> allClubsList,
+            List<Practicioner> allPracticionersList) {
+
+        BcnesaMatchResultsDetailRowInfo rowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(matchResultsDetailCsvFileRowInfo);
+        MatchInfoKey matchInfoKey = createMatchInfoKey(matchResultsDetailCsvFileRowInfo, rowInfo);
+
+        String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
+
+        if (!rowInfo.localPlayer().playerLetter().equals("D")) {
+            SeasonPlayerResult seasonPlayerResultLocal = createSeasonPlayerAndResultsAsLocal(rowInfo.localPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.visitorPlayer().playerLetter());
+            SeasonPlayerResult seasonPlayerResultVisitor = createSeasonPlayerAndResultsAsVisitor(rowInfo.visitorPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.localPlayer().playerLetter());
+
+            String uniqueRowId = createUniqueRowId(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo);
+            createPlayersSingleMatchIfNotExists(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo, uniqueRowId);
+        }
+    }
+
+    private MatchInfoKey createMatchInfoKey(
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            BcnesaMatchResultsDetailRowInfo rowInfo) {
+        String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
+        String competitionType = matchResultsDetailCsvFileRowInfo.fileInfo().competitionType();
+        String competitionCategory = matchResultsDetailCsvFileRowInfo.fileInfo().competitionCategory();
+        String competitionScope = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScope();
+        String competitionScopeTag = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScopeTag();
+        String competitionGroup = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGroup();
+        int matchDayNumber = rowInfo.matchDayNumber();
+
+        return new MatchInfoKey(
+                season,
+                competitionType,
+                competitionCategory,
+                competitionScope,
+                competitionScopeTag,
+                competitionGroup,
+                matchDayNumber,
+                rowInfo.localPlayer().teamName(),
+                rowInfo.visitorPlayer().teamName());
+    }
+
+    private String createUniqueRowId(
+            SeasonPlayerResult local,
+            SeasonPlayerResult visitor,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            BcnesaMatchResultsDetailRowInfo rowInfo) {
+        String competitionCategory = matchResultsDetailCsvFileRowInfo.fileInfo().competitionCategory();
+        String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
+        String competitionGroup = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGroup();
+        int matchDayNumber = rowInfo.matchDayNumber();
+        String teamNameLocal = rowInfo.localPlayer().teamName();
+        String teamNameVisitor = rowInfo.visitorPlayer().teamName();
+
+        return "%s-%s-%s-%s-%s-%s-%s-%s-%s-%s".formatted(
+                competitionCategory.strip(),
+                season.strip(),
+                competitionGroup,
+                String.valueOf(matchDayNumber),
+                teamNameLocal.strip(),
+                local.getSeasonPlayer().getLicense().id().strip(),
+                local.getPlayerLetter().strip(),
+                teamNameVisitor.strip(),
+                visitor.getSeasonPlayer().getLicense().id().strip(),
+                visitor.getPlayerLetter().strip()
+        );
+    }
+
+    private void createPlayersSingleMatchIfNotExists(
+            SeasonPlayerResult local,
+            SeasonPlayerResult visitor,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            BcnesaMatchResultsDetailRowInfo rowInfo,
+            String uniqueRowId) {
+        String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
+        String competitionType = matchResultsDetailCsvFileRowInfo.fileInfo().competitionType();
+        String competitionCategory = matchResultsDetailCsvFileRowInfo.fileInfo().competitionCategory();
+        String competitionScope = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScope();
+        String competitionScopeTag = matchResultsDetailCsvFileRowInfo.fileInfo().competitionScopeTag();
+        String competitionGroup = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGroup();
+        String gender = matchResultsDetailCsvFileRowInfo.fileInfo().competitionGender();
+        int matchDayNumber = rowInfo.matchDayNumber();
+        ZonedDateTime matchDateTime = rowInfo.matchDateTime();
+
+        Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultLocalIdAndSeasonPlayerResultVisitorIdAndUniqueId(local.getId(), visitor.getId(), uniqueRowId);
+        if (optPlayersSingleMatch.isEmpty()) {
+            CompetitionInfo competitionInfo = new CompetitionInfo(
+                    competitionType,
+                    competitionCategory,
+                    competitionScope,
+                    competitionScopeTag,
+                    competitionGroup,
+                    gender);
+
+            PlayersSingleMatch playersSingleMatch = PlayersSingleMatch.createNew(
+                    local,
+                    visitor,
+                    season,
+                    competitionInfo,
+                    matchDayNumber,
+                    uniqueRowId,
+                    matchDateTime
+            );
+            playersSingleMatchRepository.save(playersSingleMatch);
+        }
+    }
+
+    private SeasonPlayerResult createSeasonPlayerAndResultsAsLocal(
+            BcnesaPlayerCsvInfo playerInfo,
+            List<Club> allClubsList,
+            List<Practicioner> allPracticionerList,
+            String seasonRange,
+            MatchInfoKey matchInfoKey,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            String opponentLetter) {
+        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.LOCAL);
+    }
+
+    private SeasonPlayerResult createSeasonPlayerAndResultsAsVisitor(
+            BcnesaPlayerCsvInfo playerInfo,
+            List<Club> allClubsList,
+            List<Practicioner> allPracticionerList,
+            String seasonRange,
+            MatchInfoKey matchInfoKey,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            String opponentLetter) {
+        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.VISITOR);
+    }
+
+    private SeasonPlayerResult createSeasonPlayerAndResults(
+            BcnesaPlayerCsvInfo playerInfo,
+            List<Club> allClubsList,
+            List<Practicioner> allPracticionerList,
+            String seasonRange,
+            MatchInfoKey matchInfoKey,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            String opponentLetter,
+            TeamRole teamRole) {
+
         Optional<Club> optInferredClub = inferClubByTeamName(playerInfo.teamName(), allClubsList);
         Optional<Practicioner> optInferredPracticioner = inferPracticionerByName(playerInfo.playerName(), allPracticionerList);
 
         SeasonPlayerResult seasonPlayerResult = null;
-        if (optInferredClub.isPresent()) {
-            Club club = optInferredClub.get();
-            Practicioner practicioner = optInferredPracticioner.get();
-            seasonPlayerResult = createSeasonPlayerAndResultsForClub(club, practicioner, playerInfo, seasonRange, uniqueRowId, matchInfoKey, mapOfMatchesList, matchResultsDetailCsvFileRowInfo, opponentLetter, teamRole);
+        if (optInferredClub.isPresent() && optInferredPracticioner.isPresent()) {
+            seasonPlayerResult = createSeasonPlayerAndResultsForClub(
+                    optInferredClub.get(),
+                    optInferredPracticioner.get(),
+                    playerInfo,
+                    seasonRange,
+                    matchInfoKey,
+                    matchResultsDetailCsvFileRowInfo,
+                    opponentLetter,
+                    teamRole);
         } else {
 
             System.out.println("UNABLE TO INFER CLUB BY TEAM NAME: "+playerInfo.teamName());
@@ -184,21 +269,40 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                 .max(Comparator.comparingDouble(practicioner -> NameSimilarity.similarity(practicionerName, practicioner.getFullName())));
     }
 
-    private SeasonPlayerResult createSeasonPlayerAndResultsForClub(Club inferredClub, Practicioner inferredPracticioner, BcnesaPlayerCsvInfo playerInfo, String seasonRange, String uniqueRowId, MatchInfoKey matchInfoKey, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList, BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo, String opponentLetter, TeamRole teamRole) {
+    private SeasonPlayerResult createSeasonPlayerAndResultsForClub(
+            Club inferredClub,
+            Practicioner inferredPracticioner,
+            BcnesaPlayerCsvInfo playerInfo,
+            String seasonRange,
+            MatchInfoKey matchInfoKey,
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            String opponentLetter,
+            TeamRole teamRole) {
+
         SeasonPlayerResult seasonPlayerResult = null;
         Optional<Club> optClub = clubRepository.findByName(inferredClub.getName());
         Optional<Practicioner> optPracticioner = practicionerRepository.findByFullName(inferredPracticioner.getFullName());
-        if (optClub.isPresent()) {
+        if (optClub.isPresent() && optPracticioner.isPresent()) {
             Club club = optClub.get();
-
-            //Practicioner practicioner = getOrCreatePracticionerFromPlayerInfo(playerInfo);
             Practicioner practicioner = optPracticioner.get();
             ClubMember clubMember = getOrCreateClubMember(club, practicioner, seasonRange);
-            SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(playerInfo, practicioner, club, clubMember, seasonRange);
+            SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(
+                    practicioner,
+                    clubMember,
+                    seasonRange,
+                    new License("BCN", playerInfo.playerLicense()));
 
+            CompetitionInfo competitionInfo = new CompetitionInfo(
+                    matchInfoKey.competitionType(),
+                    matchInfoKey.competitionCategory(),
+                    matchInfoKey.competitionScope(),
+                    matchInfoKey.competitionScopeTag(),
+                    matchInfoKey.competitionGroup(),
+                    matchResultsDetailCsvFileRowInfo.fileInfo().competitionGender()
+            );
 
-            seasonPlayerResult = getOrCreateSeasonPlayerResult(seasonRange, matchInfoKey, playerInfo, seasonPlayer, opponentLetter, teamRole);
-            addSeasonPlayerResultToMap(seasonPlayerResult, matchInfoKey.teamNameAbc(), matchInfoKey.teamNameXyz(), mapOfMatchesList);
+            seasonPlayerResult = getOrCreateSeasonPlayerResult(
+                    seasonRange, competitionInfo, matchInfoKey.matchDayNumber(), playerInfo, seasonPlayer, opponentLetter, teamRole);
 
         } else {
             System.out.println("UNABLE TO FIND CLUB BY TEAM NAME: "+inferredClub.getName());
@@ -208,43 +312,50 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         return seasonPlayerResult;
     }
 
-    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, MatchInfoKey matchInfoKey, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String opponentLetter, TeamRole teamRole) {
-        SeasonPlayerResult seasonPlayerResult = seasonPlayerResultRepository
+    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, CompetitionInfo competitionInfo, int matchDayNumber, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String opponentLetter, TeamRole teamRole) {
+        SeasonPlayerResult seasonPlayerResult;
+        Optional<SeasonPlayerResult> optSeasonPlayerResult = seasonPlayerResultRepository
                 .findFor(
                         seasonRange,
-                        matchInfoKey.competitionType(),
-                        matchInfoKey.competitionCategory(),
-                        matchInfoKey.competitionScope(),
-                        matchInfoKey.competitionScopeTag(),
-                        matchInfoKey.competitionGroup(),
-                        matchInfoKey.matchDayNumber(),
+                        competitionInfo.competitionType(),
+                        competitionInfo.competitionCategory(),
+                        competitionInfo.competitionScope(),
+                        competitionInfo.competitionScopeTag(),
+                        competitionInfo.competitionGroup(),
+                        matchDayNumber,
                         playerInfo.playerLetter(),
                         buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole),
                         teamRole,
                         seasonPlayer.getClubMember().getClub().getId()
-                )
-                .orElseGet(() -> SeasonPlayerResult.createNew(
+                );
+
+        if (optSeasonPlayerResult.isPresent()) {
+            seasonPlayerResult = optSeasonPlayerResult.get();
+            /*
+            System.out.println("SEASON PLAYER RESULT ALREADY EXISTS for season %s, competition %s, player %s, match day %s. Skipping creation. ID: %s".formatted(
                     seasonRange,
-                    new CompetitionInfo(
-                            matchInfoKey.competitionType(),
-                            matchInfoKey.competitionCategory(),
-                            matchInfoKey.competitionScope(),
-                            matchInfoKey.competitionScopeTag(),
-                            matchInfoKey.competitionGroup(),
-                            "no-gender"
-                    ),
+                    competitionInfo.competitionType(),
+                    playerInfo.playerName(),
+                    matchDayNumber,
+                    seasonPlayerResult.getId()
+            ));
+            */
+        } else {
+            seasonPlayerResult = SeasonPlayerResult.createNew(
+                    seasonRange,
+                    competitionInfo,
                     seasonPlayer,
                     new MatchInfo(
-                            matchInfoKey.matchDayNumber(),
+                            matchDayNumber,
                             "",
                             playerInfo.playerLetter(),
                             new int[] {},
                             playerInfo.playerScore(),
                             buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole)
                     ),
-                        teamRole
-                ));
-
+                    teamRole
+            );
+        }
         seasonPlayerResultRepository.save(seasonPlayerResult);
         return seasonPlayerResult;
     }
@@ -257,66 +368,38 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         }
     }
 
-    private void addSeasonPlayerResultToMap(SeasonPlayerResult seasonPlayerResult, String abcTeamName, String xyzTeamName, Map<MatchInfoKey, List<SeasonPlayerResult>> mapOfMatchesList) {
-        MatchInfoKey matchInfoKey = new MatchInfoKey(
-                seasonPlayerResult.getSeason(),
-                seasonPlayerResult.getCompetitionType(),
-                seasonPlayerResult.getCompetitionCategory(),
-                seasonPlayerResult.getCompetitionScope(),
-                seasonPlayerResult.getCompetitionScopeTag(),
-                seasonPlayerResult.getCompetitionGroup(),
-                seasonPlayerResult.getMatchDayNumber(),
-                abcTeamName,
-                xyzTeamName
-        );
-
-        List<SeasonPlayerResult> seasonPlayerResultsList;
-        if (!mapOfMatchesList.keySet().contains(matchInfoKey)) {
-            seasonPlayerResultsList = new ArrayList<SeasonPlayerResult>();
-            mapOfMatchesList.put(matchInfoKey, seasonPlayerResultsList);
-        } else {
-            seasonPlayerResultsList = mapOfMatchesList.get(matchInfoKey);
-        }
-        seasonPlayerResultsList.add(seasonPlayerResult);
-    }
-
-    private Practicioner getOrCreatePracticionerFromPlayerInfo(BcnesaPlayerCsvInfo playerInfo) {
-        String[] firstAndSecondNames = splitIntoFirstNameAndSecondName(playerInfo.playerName());
-        String firstName = firstAndSecondNames[0];
-        String secondName = firstAndSecondNames[1];
-
-        Optional<Practicioner> optPracticionerFromPlayer = practicionerRepository.findByFullName(playerInfo.playerName());
-        Practicioner practicionerFromPlayer = optPracticionerFromPlayer.orElseGet(() -> Practicioner.createNew(
-                firstName,
-                secondName,
-                playerInfo.playerName(),
-                null));
-        practicionerRepository.save(practicionerFromPlayer);
-        return practicionerFromPlayer;
-    }
-
     private ClubMember getOrCreateClubMember(Club club, Practicioner practicioner, String seasonRange) {
-        Optional<ClubMember> optClubMember = clubMemberRepository.findByPracticionerIdAndClubId(practicioner.getId(), club.getId());
-        ClubMember clubMember = optClubMember.orElseGet(() -> ClubMember.createNew(
-                club,
-                practicioner
-        ));
-        clubMember.addYearRange(seasonRange);
-        clubMemberRepository.save(clubMember);
+        ClubMember clubMember = null;
+        try {
+            Optional<ClubMember> optClubMember = clubMemberRepository.findByPracticionerIdAndClubId(practicioner.getId(), club.getId());
+            clubMember = optClubMember.orElseGet(() -> ClubMember.createNew(
+                    club,
+                    practicioner
+            ));
+            clubMember.addYearRange(seasonRange);
+            clubMemberRepository.save(clubMember);
+        } catch (Exception e) {
+            System.out.println("ERROR creating ClubMember for club %s and practicioner %s".formatted(club.getName(), practicioner.getFullName()));
+            System.out.println("  > "+e.getMessage());
+        }
         return clubMember;
     }
 
-    private SeasonPlayer getOrCreateSeasonPlayer(BcnesaPlayerCsvInfo playerInfo, Practicioner practicioner, Club club, ClubMember clubMember, String seasonRange) {
-        SeasonPlayer seasonPlayer = seasonPlayerRepository
-                //.findByPracticionerIdClubIdSeason(practicionerFromPlayer.getId(), clubMember.getClub().getId(), seasonRange)
-                .findByPracticionerNameAndClubNameAndSeason(practicioner.getFullName(), club.getName(), seasonRange)
-                .orElseGet(() -> SeasonPlayer.createNew(
-                        clubMember,
-                        //License.createCatalanaLicenseOf(playerInfo.playerLicense()),
-                        new License("BARCELONA", playerInfo.playerLicense()),
-                        seasonRange
-                ));
-        seasonPlayerRepository.save(seasonPlayer);
+    private SeasonPlayer getOrCreateSeasonPlayer(Practicioner practicioner, ClubMember clubMember, String seasonRange, License license) {
+        SeasonPlayer seasonPlayer = null;
+        try {
+            seasonPlayer = seasonPlayerRepository
+                    .findByPracticionerIdClubIdSeason(practicioner.getId(), clubMember.getClub().getId(), seasonRange)
+                    .orElseGet(() -> SeasonPlayer.createNew(
+                            clubMember,
+                            license,
+                            seasonRange
+                    ));
+            seasonPlayerRepository.save(seasonPlayer);
+        } catch (Exception e) {
+            System.out.println("ERROR creating SeasonPlayer for practicioner %s, club %s and season %s".formatted(practicioner.getFullName(), clubMember.getClub().getName(), seasonRange));
+            System.out.println("  > "+e.getMessage());
+        }
         return seasonPlayer;
     }
 

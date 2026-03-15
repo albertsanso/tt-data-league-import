@@ -39,7 +39,7 @@ public class PracticionerNameSimilarityService {
                 groups.put(practicionerName, new ArrayList<>(Collections.singletonList(practicionerName)));
             }
 
-            completionTracker.trackProcessCompletion();
+            completionTracker.trackIncrement();
         }
 
         groups.replaceAll((k, v) ->

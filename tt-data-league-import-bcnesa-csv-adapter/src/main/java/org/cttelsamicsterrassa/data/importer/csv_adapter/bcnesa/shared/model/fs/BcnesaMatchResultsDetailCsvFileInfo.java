@@ -9,7 +9,8 @@ public record BcnesaMatchResultsDetailCsvFileInfo(
         String competitionCategory,
         String competitionScope,
         String competitionScopeTag,
-        String jornada,
-        String group
+        String competitionGender,
+        String competitionGroup,
+        String matchDayNumber
 ) {
 }

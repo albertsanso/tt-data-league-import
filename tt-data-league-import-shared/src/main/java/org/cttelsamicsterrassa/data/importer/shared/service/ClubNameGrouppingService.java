@@ -50,7 +50,7 @@ public class ClubNameGrouppingService {
                 groupsAndYears.put(item.clubName(), new HashSet<>(Collections.singletonList(item.yearRange())));
             }
 
-            completionTracker.trackProcessCompletion();
+            completionTracker.trackIncrement();
         }
 
         // Optionally refine roots by picking the common core phrase

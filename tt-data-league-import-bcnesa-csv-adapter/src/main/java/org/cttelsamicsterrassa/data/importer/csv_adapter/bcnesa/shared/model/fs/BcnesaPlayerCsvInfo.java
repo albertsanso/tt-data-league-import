@@ -5,5 +5,6 @@ public record BcnesaPlayerCsvInfo(
         String playerLetter,
         String playerLicense,
         String playerName,
-        int playerScore) {
+        int playerScore,
+        String gender) {
 }

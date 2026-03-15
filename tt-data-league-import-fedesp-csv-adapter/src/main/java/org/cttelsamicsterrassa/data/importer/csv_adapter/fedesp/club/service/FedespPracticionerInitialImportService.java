@@ -60,7 +60,7 @@ public class FedespPracticionerInitialImportService extends
                 practicionerRepository.save(practicionerToCreate);
             }
 
-            completionTracker.trackProcessCompletion();
+            completionTracker.trackIncrement();
         });
     }
 

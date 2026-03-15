@@ -24,7 +24,7 @@ public class CompletionTracker {
         return new CompletionTracker(total, percentageStep, taskLabel);
     }
 
-    public void trackProcessCompletion() {
+    public void trackIncrement() {
         int processed = counter.incrementAndGet();
         int percent = (processed * 100) / total;
         long elapsedTime = System.currentTimeMillis() - startTime;

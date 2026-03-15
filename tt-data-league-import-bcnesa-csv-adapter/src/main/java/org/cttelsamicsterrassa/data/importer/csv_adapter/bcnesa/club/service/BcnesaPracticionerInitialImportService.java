@@ -58,10 +58,10 @@ public class BcnesaPracticionerInitialImportService extends
         return PracticionerNameSimilarityService.reduceToSimilarClustersOfNames(matchResultsDetailCsvFileRowInfos.stream()
                 .map(rowInfo -> {
                     BcnesaMatchResultsDetailRowInfo rowInfoDetails = fileInfoExtractor.extractMatchDetailsRowInfo(rowInfo);
-                    String abcPracticionerName = rowInfoDetails.acbPlayer().playerName();
-                    String xyzPracticionerName = rowInfoDetails.xyzPlayer().playerName();
+                    String localPracticionerName = rowInfoDetails.localPlayer().playerName();
+                    String visitorPracticionerName = rowInfoDetails.visitorPlayer().playerName();
 
-                    return List.of(abcPracticionerName, xyzPracticionerName);
+                    return List.of(localPracticionerName, visitorPracticionerName);
                 })
                 .flatMap(List::stream)
                 .distinct()

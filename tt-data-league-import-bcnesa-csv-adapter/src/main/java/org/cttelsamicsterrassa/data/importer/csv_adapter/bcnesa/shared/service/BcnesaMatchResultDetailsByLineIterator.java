@@ -101,7 +101,8 @@ public class BcnesaMatchResultDetailsByLineIterator extends MatchResultDetailsBy
                             "provincial",
                             "bcn",
                             jornadaNumber,
-                            groupNumber);
+                            groupNumber,
+                            "na");
                     addToQueue(info);
                 } else {
                     throw new RuntimeException("Wrong file name format for match results details: %s".formatted(csvFilePath));

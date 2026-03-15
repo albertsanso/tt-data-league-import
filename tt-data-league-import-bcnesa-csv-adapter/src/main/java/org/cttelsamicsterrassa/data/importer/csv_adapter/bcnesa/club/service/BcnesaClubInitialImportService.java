@@ -61,7 +61,9 @@ public class BcnesaClubInitialImportService extends LineByLineInitialImportServi
         Pattern clubNameWithTeamNamePattern = Pattern.compile("(['\"]{1,2})(.)(['\"]{1,2})");
 
         List<ClubNameAndYearInfo> filteredTeamNames = matchResultsDetailCsvFileRowInfoList.stream()
-                .filter(rowInfo -> !clubNameWithTeamNamePattern.matcher(rowInfoExtractor.extractTeamNameFromRowInfo(rowInfo)).find())
+                .filter(rowInfo ->
+                        !clubNameWithTeamNamePattern.matcher(rowInfoExtractor.extractTeamNameFromRowInfo(rowInfo))
+                                .find())
                 .map(matchResultsDetailCsvFileRowInfo ->
                         new ClubNameAndYearInfo(
                                 rowInfoExtractor.extractTeamNameFromRowInfo(matchResultsDetailCsvFileRowInfo),

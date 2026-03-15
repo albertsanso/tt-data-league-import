@@ -5,36 +5,52 @@ import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.
 import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.shared.model.fs.BcnesaPlayerCsvInfo;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+
 @Component
 public class BcnesaCsvFileRowInfoExtractor {
 
     public String extractTeamNameFromRowInfo(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
-        return rowInfo.rowInfo()[1];
+        return rowInfo.rowInfo()[11];
     }
 
     public BcnesaMatchResultsDetailRowInfo extractMatchDetailsRowInfo(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
-        BcnesaPlayerCsvInfo abcPlayer = parsePlayerABC(rowInfo);
-        BcnesaPlayerCsvInfo xyzPlayer = parsePlayerXYZ(rowInfo);
-        return new BcnesaMatchResultsDetailRowInfo(abcPlayer, xyzPlayer);
+        BcnesaPlayerCsvInfo localPlayer = parsePlayerLocal(rowInfo);
+        BcnesaPlayerCsvInfo visitorPlayer = parsePlayerVisitor(rowInfo);
+        int matchDayNumber = Integer.parseInt(rowInfo.rowInfo()[0].replaceAll("\\D+", ""));
+        String gameMode = rowInfo.rowInfo()[0];
+        ZonedDateTime matchDateTime = parseZonedDateTime(rowInfo.rowInfo()[1]);
+        return new BcnesaMatchResultsDetailRowInfo(localPlayer, visitorPlayer, matchDayNumber, gameMode, matchDateTime);
     }
 
-    private BcnesaPlayerCsvInfo parsePlayerABC(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
+    private static ZonedDateTime parseZonedDateTime(String dateStr) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yy");
+        return LocalDate.parse(dateStr, formatter)
+                .atStartOfDay(ZoneId.systemDefault()); // or ZoneId.systemDefault()
+    }
+
+    private BcnesaPlayerCsvInfo parsePlayerLocal(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
         return new BcnesaPlayerCsvInfo(
-                rowInfo.rowInfo()[0],
-                rowInfo.rowInfo()[2],
-                rowInfo.rowInfo()[3],
-                rowInfo.rowInfo()[4],
-                Integer.parseInt(rowInfo.rowInfo()[5])
+                rowInfo.rowInfo()[11],
+                rowInfo.rowInfo()[12],
+                rowInfo.rowInfo()[13],
+                rowInfo.rowInfo()[14],
+                Integer.parseInt(rowInfo.rowInfo()[15]),
+                rowInfo.fileInfo().competitionGender()
         );
     }
 
-    private BcnesaPlayerCsvInfo parsePlayerXYZ(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
+    private BcnesaPlayerCsvInfo parsePlayerVisitor(BcnesaMatchResultsDetailCsvFileRowInfo rowInfo) {
         return new BcnesaPlayerCsvInfo(
-                rowInfo.rowInfo()[1],
-                rowInfo.rowInfo()[6],
-                rowInfo.rowInfo()[7],
-                rowInfo.rowInfo()[8],
-                Integer.parseInt(rowInfo.rowInfo()[9])
+                rowInfo.rowInfo()[21],
+                rowInfo.rowInfo()[22],
+                rowInfo.rowInfo()[23],
+                rowInfo.rowInfo()[24],
+                Integer.parseInt(rowInfo.rowInfo()[25]),
+                rowInfo.fileInfo().competitionGender()
         );
     }
 }
