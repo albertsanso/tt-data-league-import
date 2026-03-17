@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailCsvFileRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespPlayerCsvInfo;
@@ -26,8 +29,16 @@ public class FedespCsvFileRowInfoExtractor {
     }
 
     private static ZonedDateTime parseZonedDateTime(String dateTimeStr) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/uuuuHH:mm");
-        return LocalDateTime.parse(dateTimeStr, formatter).atZone(ZoneId.systemDefault());
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/uuuu HH:mm");
+        String cleanDateTimeStr = dateTimeStr.replaceAll("(?<=/\\d{4})(\\s*)", " ");
+
+        ZonedDateTime zonedDateTime = ZonedDateTime.now();
+        try {
+            zonedDateTime = LocalDateTime.parse(cleanDateTimeStr, formatter).atZone(ZoneId.systemDefault());
+        } catch (DateTimeParseException e) {
+            e.printStackTrace();
+        }
+        return zonedDateTime;
     }
 
     private FedespPlayerCsvInfo parsePlayerLocal(FedespMatchResultsDetailCsvFileRowInfo rowInfo) {

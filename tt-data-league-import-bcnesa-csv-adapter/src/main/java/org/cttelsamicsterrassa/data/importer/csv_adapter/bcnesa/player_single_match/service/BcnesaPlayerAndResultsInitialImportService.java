@@ -29,6 +29,7 @@ import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsBy
 import org.cttelsamicsterrassa.data.importer.shared.service.name.NameSimilarity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.time.ZonedDateTime;
@@ -89,12 +90,34 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
 
         CompletionTracker completionTracker = CompletionTracker.buildTracker(matchResultsDetailCsvFileRowInfoList.size(), 1, "Player and Results import");
 
+        /*
         matchResultsDetailCsvFileRowInfoList
                 .parallelStream()
                 .forEach(matchResultsDetailCsvFileRowInfo -> {
-                    processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
-                    completionTracker.trackIncrement();
+                            processMatchResultsDetailsRowInfoTransactional(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
+                            completionTracker.trackIncrement();
+                        });
+        */
+
+        matchResultsDetailCsvFileRowInfoList
+                .forEach(matchResultsDetailCsvFileRowInfo -> {
+                    try {
+                        processMatchResultsDetailsRowInfoTransactional(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
+                    } catch (Exception e) {
+                        System.err.println("ERROR processing row: " + e.getMessage());
+                        e.printStackTrace();
+                    } finally {
+                        completionTracker.trackIncrement();
+                    }
                 });
+    }
+
+    @Transactional
+    private void processMatchResultsDetailsRowInfoTransactional(
+            BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
+            List<Club> allClubsList,
+            List<Practicioner> allPracticionersList) {
+        processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
     }
 
     private void processMatchResultsDetailsRowInfo(

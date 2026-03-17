@@ -90,7 +90,7 @@ public class FedespPlayerAndResultsImportService extends LineByLineInitialImport
         CompletionTracker completionTracker = CompletionTracker.buildTracker(matchResultsDetailCsvFileRowInfoList.size(), 1, "Player and Results import");
 
         matchResultsDetailCsvFileRowInfoList
-            .parallelStream()
+            //.parallelStream()
             .forEach(matchResultsDetailCsvFileRowInfo -> {
                 processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
                 completionTracker.trackIncrement();

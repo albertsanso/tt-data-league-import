@@ -55,13 +55,23 @@ public class ImporterApplication implements CommandLineRunner {
 
         //fedespPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderFedesp);
         //fedespClubInitialImportService.processClubNamesForAllSeason(baseFolderFedesp);
-
         //fedespPlayerAndResultsImportService.processForAllSeasons(baseFolderFedesp);
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2024-2025");
         //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2023-2024");
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2022-2023");
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2021-2022");
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2020-2021");
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2019-2020");
+        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2018-2019");
 
         //bcnesaPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderbcnesa);
         //bcnesaClubInitialImportService.processClubNamesForAllSeason(baseFolderbcnesa);
-        bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2021-2022");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2024-2025");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2023-2024");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2022-2023");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2021-2022");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2020-2021");
+        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2019-2020");
 
         long tsEnd = System.currentTimeMillis();
         System.out.println("Total time (ms): " + (tsEnd - tsBeguin));
