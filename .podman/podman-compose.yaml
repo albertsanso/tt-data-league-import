@@ -1,0 +1,46 @@
+name: tt-data-league-import
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: tt-data-league-postgres
+    hostname: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ttleaguedata
+      POSTGRES_USER: guest
+      POSTGRES_PASSWORD: guest
+      TZ: Europe/Madrid
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    init: true
+    stop_grace_period: 30s
+
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:8
+    container_name: tt-data-league-pgadmin
+    hostname: pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: albertsanso@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8081:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+volumes:
+  postgres-data:
+    name: ttleaguedata-postgres-data
+  pgadmin-data:
+    name: ttleaguedata-pgadmin-data
