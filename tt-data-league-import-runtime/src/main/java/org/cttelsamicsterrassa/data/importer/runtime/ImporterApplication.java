@@ -13,7 +13,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 @SpringBootApplication(scanBasePackages = {
         "org.cttelsamicsterrassa"
@@ -23,10 +24,10 @@ import java.io.IOException;
 public class ImporterApplication implements CommandLineRunner {
 
     @Autowired
-    BcnesaClubInitialImportService bcnesaClubInitialImportService;
+    private BcnesaClubInitialImportService bcnesaClubInitialImportService;
 
     @Autowired
-    FedespClubInitialImportService fedespClubInitialImportService;
+    private FedespClubInitialImportService fedespClubInitialImportService;
 
     @Autowired
     private BcnesaPlayerAndResultsInitialImportService bcnesaPlayerAndResultsInitialImportService;
@@ -44,86 +45,114 @@ public class ImporterApplication implements CommandLineRunner {
         SpringApplication.run(ImporterApplication.class, args);
     }
 
+    /**
+     * Accepted arguments:
+     *   --base-folder=<path>                  (required)
+     *   --federation=<fedesp|bcnesa>          (required)
+     *   --workflow=<clubs|practicioners|results> (required)
+     *   --season=<YYYY-YYYY>                  (optional; runs all seasons when omitted)
+     *
+     * Examples:
+     *   --federation=fedesp --workflow=clubs --base-folder=/data/fedesp
+     *   --federation=bcnesa --workflow=results --base-folder=/data/bcnesa --season=2024-2025
+     */
     @Override
     public void run(String... args) throws Exception {
-        long tsBeguin = System.currentTimeMillis();
+        Map<String, String> params = parseArgs(args);
 
-        //String baseFolderFedesp = "C:\\git\\fedesp-data-csv\\resources\\match-results-details\\v3-claude-flat";
-        String baseFolderFedesp = "C:\\git\\fedesp-data-extractor-python\\resources\\match-results-details\\v3-claude-flat";
-        //String baseFolderbcnesa = "C:\\git\\bcnesa-data-csv\\resources\\matches-results-details\\csv";
-        String baseFolderbcnesa = "C:\\git\\bcnesa-data-extractor-python\\resources\\matches-results-details\\csv";
+        String baseFolder = params.get("base-folder");
+        String federation = params.get("federation");
+        String workflow   = params.get("workflow");
+        String season     = params.get("season");
 
-        //fedespPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderFedesp);
-        //fedespClubInitialImportService.processClubNamesForAllSeason(baseFolderFedesp);
-        //fedespPlayerAndResultsImportService.processForAllSeasons(baseFolderFedesp);
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2024-2025");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2023-2024");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2022-2023");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2021-2022");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2020-2021");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2019-2020");
-        //fedespPlayerAndResultsImportService.processForSeason(baseFolderFedesp, "2018-2019");
+        if (federation == null || workflow == null || baseFolder == null) {
+            printUsage();
+            return;
+        }
 
-        //bcnesaPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolderbcnesa);
-        //bcnesaClubInitialImportService.processClubNamesForAllSeason(baseFolderbcnesa);
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2024-2025");
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2023-2024");
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2022-2023");
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2021-2022");
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2020-2021");
-        //bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolderbcnesa, "2019-2020");
+        long tsBegin = System.currentTimeMillis();
 
-        long tsEnd = System.currentTimeMillis();
-        System.out.println("Total time (ms): " + (tsEnd - tsBeguin));
+        runFromParams(baseFolder, federation, workflow, season);
+
+        System.out.println("Total time (ms): " + (System.currentTimeMillis() - tsBegin));
     }
 
-    private void processBcnesa(String[] seasonsList) throws IOException {
-        for (String season : seasonsList) {
-            System.out.println(season);
-            processBcnesa(season);
+    private void runFromParams(String baseFolder, String federation, String workflow, String season) throws Exception {
+        dispatch(baseFolder, federation, workflow, season);
+    }
+
+    private void dispatch(String baseFolder, String federation, String workflow, String season) throws Exception {
+        switch (federation.toLowerCase()) {
+            case "fedesp" -> dispatchFedesp(workflow, baseFolder, season);
+            case "bcnesa" -> dispatchBcnesa(workflow, baseFolder, season);
+            default -> {
+                System.err.println("Unknown federation: " + federation + ". Valid values: fedesp, bcnesa");
+                printUsage();
+            }
         }
     }
 
-    private void processFedesp(String[] seasonsList) throws IOException {
-        for (String season : seasonsList) {
-            System.out.println(season);
-            processFedesp(season);
+    private void dispatchFedesp(String workflow, String baseFolder, String season) throws Exception {
+        switch (workflow.toLowerCase()) {
+            case "clubs" -> {
+                if (season != null) fedespClubInitialImportService.processClubNamesForSeason(baseFolder, season);
+                else               fedespClubInitialImportService.processClubNamesForAllSeason(baseFolder);
+            }
+            case "practicioners" -> {
+                if (season != null) fedespPracticionerInitialImportService.processPracticionersForSeason(baseFolder, season);
+                else               fedespPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolder);
+            }
+            case "results" -> {
+                if (season != null) fedespPlayerAndResultsImportService.processForSeason(baseFolder, season);
+                else               fedespPlayerAndResultsImportService.processForAllSeasons(baseFolder);
+            }
+            default -> {
+                System.err.println("Unknown workflow: " + workflow + ". Valid values: clubs, practicioners, results");
+                printUsage();
+            }
         }
     }
-    private void processBcnesa(String season) throws IOException {
-        String baseFolder = "C:\\git\\bcnesa-data-csv\\resources\\matches-results-details\\csv";
-        processBcnesaClubAndMembersInfoForFolderAndBySeason(baseFolder, season);
-        processBcnesaPracticionersInfoForFolderAndBySeason(baseFolder, season);
-        processBcnesaMatchesAndResultsInfoForFolderAndBySeason(baseFolder, season);
+
+    private void dispatchBcnesa(String workflow, String baseFolder, String season) throws Exception {
+        switch (workflow.toLowerCase()) {
+            case "clubs" -> {
+                if (season != null) bcnesaClubInitialImportService.processClubNamesForSeason(baseFolder, season);
+                else               bcnesaClubInitialImportService.processClubNamesForAllSeason(baseFolder);
+            }
+            case "practicioners" -> {
+                if (season != null) bcnesaPracticionerInitialImportService.processPracticionersForSeason(baseFolder, season);
+                else               bcnesaPracticionerInitialImportService.processParacticionersForAllSeasons(baseFolder);
+            }
+            case "results" -> {
+                if (season != null) bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolder, season);
+                else               bcnesaPlayerAndResultsInitialImportService.processForAllSeasons(baseFolder);
+            }
+            default -> {
+                System.err.println("Unknown workflow: " + workflow + ". Valid values: clubs, practicioners, results");
+                printUsage();
+            }
+        }
     }
 
-    private void processFedesp(String season) throws IOException {
-        String baseFolder = "C:\\git\\fedesp-data-csv\\resources\\match-results-details";
-        processFedespPracticionersInfoForFolderAndBySeason(baseFolder, season);
+    private static Map<String, String> parseArgs(String[] args) {
+        Map<String, String> params = new HashMap<>();
+        for (String arg : args) {
+            if (arg.startsWith("--")) {
+                String withoutPrefix = arg.substring(2);
+                int eq = withoutPrefix.indexOf('=');
+                if (eq > 0) {
+                    params.put(withoutPrefix.substring(0, eq), withoutPrefix.substring(eq + 1));
+                }
+            }
+        }
+        return params;
     }
 
-    private void processFedespClubAndMembersInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        fedespClubInitialImportService.processClubNamesForSeason(baseFolder, season);
+    private static void printUsage() {
+        System.out.println("Usage:");
+        System.out.println("  --federation=<fedesp|bcnesa>           (required)");
+        System.out.println("  --workflow=<clubs|practicioners|results> (required)");
+        System.out.println("  --base-folder=<path>                   (required)");
+        System.out.println("  --season=<YYYY-YYYY>                   (optional; runs all seasons when omitted)");
     }
-
-    private void processFedespMatchesAndResultsInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        fedespPlayerAndResultsImportService.processForSeason(baseFolder, season);
-    }
-
-    private void processBcnesaClubAndMembersInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        bcnesaClubInitialImportService.processClubNamesForSeason(baseFolder, season);
-    }
-
-    private void processBcnesaMatchesAndResultsInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        bcnesaPlayerAndResultsInitialImportService.processForSeason(baseFolder, season);
-    }
-
-    private void processFedespPracticionersInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        fedespPracticionerInitialImportService.processPracticionersForSeason(baseFolder, season);
-    }
-
-    private void processBcnesaPracticionersInfoForFolderAndBySeason(String baseFolder, String season) throws IOException {
-        //bcnesaPracticionerInitialImportService.processPracticionersForSeason(baseFolder, season);
-    }
-
 }
