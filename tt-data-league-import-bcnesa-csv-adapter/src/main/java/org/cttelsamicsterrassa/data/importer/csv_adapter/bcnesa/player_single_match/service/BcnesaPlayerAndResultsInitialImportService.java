@@ -1,6 +1,9 @@
 package org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.player_single_match.service;
 
 import org.apache.commons.text.similarity.LevenshteinDistance;
+import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.player_single_match.model.ClubMemberCacheKey;
+import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.player_single_match.model.SeasonPlayerCacheKey;
+import org.cttelsamicsterrassa.data.importer.csv_adapter.bcnesa.player_single_match.model.SeasonPlayerResultCacheKey;
 import org.cttelsamicsterrassa.data.core.domain.model.Club;
 import org.cttelsamicsterrassa.data.core.domain.model.ClubMember;
 import org.cttelsamicsterrassa.data.core.domain.model.CompetitionInfo;
@@ -35,8 +38,12 @@ import java.io.IOException;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitialImportService<BcnesaMatchResultsDetailCsvFileRowInfo, BcnesaMatchResultsDetailCsvFileInfo> {
@@ -85,8 +92,17 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
     }
 
     private void processMatchResultsDetailsInfo(List<BcnesaMatchResultsDetailCsvFileRowInfo> matchResultsDetailCsvFileRowInfoList) {
+        ImportMetrics metrics = new ImportMetrics();
+        long totalStartTimeMs = System.currentTimeMillis();
+
+        long preloadStartTimeMs = System.currentTimeMillis();
         List<Club> allClubsList = clubRepository.findAll();
         List<Practicioner> allPracticionersList = practicionerRepository.findAll();
+        Map<String, Club> clubsByNameMap = buildClubLookupMap(allClubsList);
+        Map<String, Practicioner> practicionersByNameMap = buildPracticionerLookupMap(allPracticionersList);
+        metrics.preloadMs = System.currentTimeMillis() - preloadStartTimeMs;
+
+        ImportRunContext context = new ImportRunContext(clubsByNameMap, practicionersByNameMap);
 
         CompletionTracker completionTracker = CompletionTracker.buildTracker(matchResultsDetailCsvFileRowInfoList.size(), 1, "Player and Results import");
 
@@ -99,44 +115,65 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                         });
         */
 
+        long rowLoopStartTimeMs = System.currentTimeMillis();
         matchResultsDetailCsvFileRowInfoList
                 .forEach(matchResultsDetailCsvFileRowInfo -> {
                     try {
-                        processMatchResultsDetailsRowInfoTransactional(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
+                        processMatchResultsDetailsRowInfoTransactional(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList, context, metrics);
                     } catch (Exception e) {
+                        metrics.rowExceptions++;
                         System.err.println("ERROR processing row: " + e.getMessage());
                         e.printStackTrace();
                     } finally {
                         completionTracker.trackIncrement();
                     }
                 });
+
+        metrics.rowLoopMs = System.currentTimeMillis() - rowLoopStartTimeMs;
+        metrics.totalMs = System.currentTimeMillis() - totalStartTimeMs;
+        printImportMetrics(metrics, context);
     }
 
     @Transactional
     private void processMatchResultsDetailsRowInfoTransactional(
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
             List<Club> allClubsList,
-            List<Practicioner> allPracticionersList) {
-        processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList);
+            List<Practicioner> allPracticionersList,
+            ImportRunContext context,
+            ImportMetrics metrics) {
+        processMatchResultsDetailsRowInfo(matchResultsDetailCsvFileRowInfo, allClubsList, allPracticionersList, context, metrics);
     }
 
     private void processMatchResultsDetailsRowInfo(
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
             List<Club> allClubsList,
-            List<Practicioner> allPracticionersList) {
+            List<Practicioner> allPracticionersList,
+            ImportRunContext context,
+            ImportMetrics metrics) {
+
+        metrics.rowsTotal++;
 
         BcnesaMatchResultsDetailRowInfo rowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(matchResultsDetailCsvFileRowInfo);
         MatchInfoKey matchInfoKey = createMatchInfoKey(matchResultsDetailCsvFileRowInfo, rowInfo);
 
         String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
 
-        if (!rowInfo.localPlayer().playerLetter().equals("D")) {
-            SeasonPlayerResult seasonPlayerResultLocal = createSeasonPlayerAndResultsAsLocal(rowInfo.localPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.visitorPlayer().playerLetter());
-            SeasonPlayerResult seasonPlayerResultVisitor = createSeasonPlayerAndResultsAsVisitor(rowInfo.visitorPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.localPlayer().playerLetter());
-
-            String uniqueRowId = createUniqueRowId(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo);
-            createPlayersSingleMatchIfNotExists(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo, uniqueRowId);
+        if (rowInfo.localPlayer().playerLetter().equals("D")) {
+            metrics.rowsSkippedPlayerD++;
+            return;
         }
+
+        SeasonPlayerResult seasonPlayerResultLocal = createSeasonPlayerAndResultsAsLocal(rowInfo.localPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.visitorPlayer().playerLetter(), context, metrics);
+        SeasonPlayerResult seasonPlayerResultVisitor = createSeasonPlayerAndResultsAsVisitor(rowInfo.visitorPlayer(), allClubsList, allPracticionersList, season, matchInfoKey, matchResultsDetailCsvFileRowInfo, rowInfo.localPlayer().playerLetter(), context, metrics);
+
+        if (seasonPlayerResultLocal == null || seasonPlayerResultVisitor == null) {
+            metrics.rowsSkippedInferenceMiss++;
+            return;
+        }
+
+        String uniqueRowId = createUniqueRowId(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo);
+        createPlayersSingleMatchIfNotExists(seasonPlayerResultLocal, seasonPlayerResultVisitor, matchResultsDetailCsvFileRowInfo, rowInfo, uniqueRowId, metrics);
+        metrics.rowsProcessed++;
     }
 
     private MatchInfoKey createMatchInfoKey(
@@ -193,7 +230,8 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             SeasonPlayerResult visitor,
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
             BcnesaMatchResultsDetailRowInfo rowInfo,
-            String uniqueRowId) {
+            String uniqueRowId,
+            ImportMetrics metrics) {
         String season = matchResultsDetailCsvFileRowInfo.fileInfo().season();
         String competitionType = matchResultsDetailCsvFileRowInfo.fileInfo().competitionType();
         String competitionCategory = matchResultsDetailCsvFileRowInfo.fileInfo().competitionCategory();
@@ -206,6 +244,7 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
 
         Optional<PlayersSingleMatch> optPlayersSingleMatch = playersSingleMatchRepository.findBySeasonPlayerResultLocalIdAndSeasonPlayerResultVisitorIdAndUniqueId(local.getId(), visitor.getId(), uniqueRowId);
         if (optPlayersSingleMatch.isEmpty()) {
+            metrics.playersSingleMatchCacheMiss++;
             CompetitionInfo competitionInfo = new CompetitionInfo(
                     competitionType,
                     competitionCategory,
@@ -224,6 +263,10 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                     matchDateTime
             );
             playersSingleMatchRepository.save(playersSingleMatch);
+            metrics.playersSingleMatchSaved++;
+        } else {
+            metrics.playersSingleMatchCacheHit++;
+            metrics.saveSkippedNoChange++;
         }
     }
 
@@ -234,8 +277,10 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             String seasonRange,
             MatchInfoKey matchInfoKey,
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
-            String opponentLetter) {
-        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.LOCAL);
+            String opponentLetter,
+            ImportRunContext context,
+            ImportMetrics metrics) {
+        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.LOCAL, context, metrics);
     }
 
     private SeasonPlayerResult createSeasonPlayerAndResultsAsVisitor(
@@ -245,8 +290,10 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             String seasonRange,
             MatchInfoKey matchInfoKey,
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
-            String opponentLetter) {
-        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.VISITOR);
+            String opponentLetter,
+            ImportRunContext context,
+            ImportMetrics metrics) {
+        return createSeasonPlayerAndResults(playerInfo, allClubsList, allPracticionerList, seasonRange, matchInfoKey, matchResultsDetailCsvFileRowInfo, opponentLetter, TeamRole.VISITOR, context, metrics);
     }
 
     private SeasonPlayerResult createSeasonPlayerAndResults(
@@ -257,26 +304,33 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             MatchInfoKey matchInfoKey,
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
             String opponentLetter,
-            TeamRole teamRole) {
+            TeamRole teamRole,
+            ImportRunContext context,
+            ImportMetrics metrics) {
 
         Optional<Club> optInferredClub = inferClubByTeamName(playerInfo.teamName(), allClubsList);
         Optional<Practicioner> optInferredPracticioner = inferPracticionerByName(playerInfo.playerName(), allPracticionerList);
 
+        Optional<Club> optExistingClub = optInferredClub.flatMap(club -> findClubInPreloadedMap(club, context, metrics));
+        Optional<Practicioner> optExistingPracticioner = optInferredPracticioner.flatMap(practicioner -> findPracticionerInPreloadedMap(practicioner, context, metrics));
+
         SeasonPlayerResult seasonPlayerResult = null;
-        if (optInferredClub.isPresent() && optInferredPracticioner.isPresent()) {
+        if (optExistingClub.isPresent() && optExistingPracticioner.isPresent()) {
             seasonPlayerResult = createSeasonPlayerAndResultsForClub(
-                    optInferredClub.get(),
-                    optInferredPracticioner.get(),
+                    optExistingClub.get(),
+                    optExistingPracticioner.get(),
                     playerInfo,
                     seasonRange,
                     matchInfoKey,
                     matchResultsDetailCsvFileRowInfo,
                     opponentLetter,
-                    teamRole);
+                    teamRole,
+                    context,
+                    metrics);
         } else {
-
-            System.out.println("UNABLE TO INFER CLUB BY TEAM NAME: "+playerInfo.teamName());
-            System.out.println("  > "+matchResultsDetailCsvFileRowInfo.fileInfo().csvFilepath());
+            metrics.inferenceMisses++;
+            System.out.println("UNABLE TO INFER CLUB OR PRACTICIONER: " + playerInfo.teamName() + " / " + playerInfo.playerName());
+            System.out.println("  > " + matchResultsDetailCsvFileRowInfo.fileInfo().csvFilepath());
         }
         return seasonPlayerResult;
     }
@@ -300,20 +354,20 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             MatchInfoKey matchInfoKey,
             BcnesaMatchResultsDetailCsvFileRowInfo matchResultsDetailCsvFileRowInfo,
             String opponentLetter,
-            TeamRole teamRole) {
+            TeamRole teamRole,
+            ImportRunContext context,
+            ImportMetrics metrics) {
 
         SeasonPlayerResult seasonPlayerResult = null;
-        Optional<Club> optClub = clubRepository.findByName(inferredClub.getName());
-        Optional<Practicioner> optPracticioner = practicionerRepository.findByFullName(inferredPracticioner.getFullName());
-        if (optClub.isPresent() && optPracticioner.isPresent()) {
-            Club club = optClub.get();
-            Practicioner practicioner = optPracticioner.get();
-            ClubMember clubMember = getOrCreateClubMember(club, practicioner, seasonRange);
+        if (inferredClub != null && inferredPracticioner != null) {
+            ClubMember clubMember = getOrCreateClubMember(inferredClub, inferredPracticioner, seasonRange, context, metrics);
             SeasonPlayer seasonPlayer = getOrCreateSeasonPlayer(
-                    practicioner,
+                    inferredPracticioner,
                     clubMember,
                     seasonRange,
-                    new License("BCN", playerInfo.playerLicense()));
+                    new License("BCN", playerInfo.playerLicense()),
+                    context,
+                    metrics);
 
             CompetitionInfo competitionInfo = new CompetitionInfo(
                     matchInfoKey.competitionType(),
@@ -325,18 +379,39 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
             );
 
             seasonPlayerResult = getOrCreateSeasonPlayerResult(
-                    seasonRange, competitionInfo, matchInfoKey.matchDayNumber(), playerInfo, seasonPlayer, opponentLetter, teamRole);
+                    seasonRange, competitionInfo, matchInfoKey.matchDayNumber(), playerInfo, seasonPlayer, opponentLetter, teamRole, context, metrics);
 
         } else {
-            System.out.println("UNABLE TO FIND CLUB BY TEAM NAME: "+inferredClub.getName());
-            System.out.println("  > "+matchResultsDetailCsvFileRowInfo.fileInfo().csvFilepath());
+            metrics.inferenceMisses++;
+            System.out.println("UNABLE TO FIND CLUB OR PRACTICIONER FOR ROW: " + matchResultsDetailCsvFileRowInfo.fileInfo().csvFilepath());
 
         }
         return seasonPlayerResult;
     }
 
-    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, CompetitionInfo competitionInfo, int matchDayNumber, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String opponentLetter, TeamRole teamRole) {
-        SeasonPlayerResult seasonPlayerResult;
+    private SeasonPlayerResult getOrCreateSeasonPlayerResult(String seasonRange, CompetitionInfo competitionInfo, int matchDayNumber, BcnesaPlayerCsvInfo playerInfo, SeasonPlayer seasonPlayer, String opponentLetter, TeamRole teamRole, ImportRunContext context, ImportMetrics metrics) {
+        String playersPairingKey = buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole);
+        SeasonPlayerResultCacheKey cacheKey = new SeasonPlayerResultCacheKey(
+                seasonRange,
+                competitionInfo.competitionType(),
+                competitionInfo.competitionCategory(),
+                competitionInfo.competitionScope(),
+                competitionInfo.competitionScopeTag(),
+                competitionInfo.competitionGroup(),
+                matchDayNumber,
+                playerInfo.playerLetter(),
+                playersPairingKey,
+                teamRole,
+                normalizeId(seasonPlayer.getClubMember().getClub().getId())
+        );
+
+        SeasonPlayerResult cachedResult = context.seasonPlayerResultCache.get(cacheKey);
+        if (cachedResult != null) {
+            metrics.seasonPlayerResultCacheHit++;
+            return cachedResult;
+        }
+
+        metrics.seasonPlayerResultCacheMiss++;
         Optional<SeasonPlayerResult> optSeasonPlayerResult = seasonPlayerResultRepository
                 .findFor(
                         seasonRange,
@@ -347,24 +422,18 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                         competitionInfo.competitionGroup(),
                         matchDayNumber,
                         playerInfo.playerLetter(),
-                        buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole),
+                        playersPairingKey,
                         teamRole,
                         seasonPlayer.getClubMember().getClub().getId()
                 );
 
         if (optSeasonPlayerResult.isPresent()) {
-            seasonPlayerResult = optSeasonPlayerResult.get();
-            /*
-            System.out.println("SEASON PLAYER RESULT ALREADY EXISTS for season %s, competition %s, player %s, match day %s. Skipping creation. ID: %s".formatted(
-                    seasonRange,
-                    competitionInfo.competitionType(),
-                    playerInfo.playerName(),
-                    matchDayNumber,
-                    seasonPlayerResult.getId()
-            ));
-            */
+            SeasonPlayerResult existingResult = optSeasonPlayerResult.get();
+            context.seasonPlayerResultCache.put(cacheKey, existingResult);
+            metrics.saveSkippedNoChange++;
+            return existingResult;
         } else {
-            seasonPlayerResult = SeasonPlayerResult.createNew(
+            SeasonPlayerResult seasonPlayerResult = SeasonPlayerResult.createNew(
                     seasonRange,
                     competitionInfo,
                     seasonPlayer,
@@ -374,13 +443,15 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                             playerInfo.playerLetter(),
                             new int[] {},
                             playerInfo.playerScore(),
-                            buildPlayersPairingKey(playerInfo.playerLetter(), opponentLetter, teamRole)
+                            playersPairingKey
                     ),
                     teamRole
             );
+            seasonPlayerResultRepository.save(seasonPlayerResult);
+            context.seasonPlayerResultCache.put(cacheKey, seasonPlayerResult);
+            metrics.seasonPlayerResultSaved++;
+            return seasonPlayerResult;
         }
-        seasonPlayerResultRepository.save(seasonPlayerResult);
-        return seasonPlayerResult;
     }
 
     private static String buildPlayersPairingKey(String playerLetter, String opponentLetter, TeamRole teamRole) {
@@ -391,7 +462,16 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         }
     }
 
-    private ClubMember getOrCreateClubMember(Club club, Practicioner practicioner, String seasonRange) {
+    private ClubMember getOrCreateClubMember(Club club, Practicioner practicioner, String seasonRange, ImportRunContext context, ImportMetrics metrics) {
+        ClubMemberCacheKey cacheKey = new ClubMemberCacheKey(normalizeId(practicioner.getId()), normalizeId(club.getId()));
+        ClubMember cachedClubMember = context.clubMemberCache.get(cacheKey);
+        if (cachedClubMember != null) {
+            metrics.clubMemberCacheHit++;
+            ensureClubMemberSeasonRange(cachedClubMember, cacheKey, seasonRange, context, metrics);
+            return cachedClubMember;
+        }
+
+        metrics.clubMemberCacheMiss++;
         ClubMember clubMember = null;
         try {
             Optional<ClubMember> optClubMember = clubMemberRepository.findByPracticionerIdAndClubId(practicioner.getId(), club.getId());
@@ -399,8 +479,14 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
                     club,
                     practicioner
             ));
-            clubMember.addYearRange(seasonRange);
-            clubMemberRepository.save(clubMember);
+
+            if (optClubMember.isEmpty()) {
+                clubMemberRepository.save(clubMember);
+                metrics.clubMemberSaved++;
+            }
+
+            ensureClubMemberSeasonRange(clubMember, cacheKey, seasonRange, context, metrics);
+            context.clubMemberCache.put(cacheKey, clubMember);
         } catch (Exception e) {
             System.out.println("ERROR creating ClubMember for club %s and practicioner %s".formatted(club.getName(), practicioner.getFullName()));
             System.out.println("  > "+e.getMessage());
@@ -408,22 +494,177 @@ public class BcnesaPlayerAndResultsInitialImportService extends LineByLineInitia
         return clubMember;
     }
 
-    private SeasonPlayer getOrCreateSeasonPlayer(Practicioner practicioner, ClubMember clubMember, String seasonRange, License license) {
+    private SeasonPlayer getOrCreateSeasonPlayer(Practicioner practicioner, ClubMember clubMember, String seasonRange, License license, ImportRunContext context, ImportMetrics metrics) {
+        SeasonPlayerCacheKey cacheKey = new SeasonPlayerCacheKey(normalizeId(practicioner.getId()), normalizeId(clubMember.getClub().getId()), seasonRange);
+        SeasonPlayer cachedSeasonPlayer = context.seasonPlayerCache.get(cacheKey);
+        if (cachedSeasonPlayer != null) {
+            metrics.seasonPlayerCacheHit++;
+            return cachedSeasonPlayer;
+        }
+
+        metrics.seasonPlayerCacheMiss++;
         SeasonPlayer seasonPlayer = null;
         try {
-            seasonPlayer = seasonPlayerRepository
-                    .findByPracticionerIdClubIdSeason(practicioner.getId(), clubMember.getClub().getId(), seasonRange)
-                    .orElseGet(() -> SeasonPlayer.createNew(
-                            clubMember,
-                            license,
-                            seasonRange
-                    ));
-            seasonPlayerRepository.save(seasonPlayer);
+            Optional<SeasonPlayer> existingSeasonPlayer = seasonPlayerRepository
+                    .findByPracticionerIdClubIdSeason(practicioner.getId(), clubMember.getClub().getId(), seasonRange);
+
+            if (existingSeasonPlayer.isPresent()) {
+                seasonPlayer = existingSeasonPlayer.get();
+                metrics.saveSkippedNoChange++;
+            } else {
+                seasonPlayer = SeasonPlayer.createNew(
+                        clubMember,
+                        license,
+                        seasonRange
+                );
+                seasonPlayerRepository.save(seasonPlayer);
+                metrics.seasonPlayerSaved++;
+            }
+
+            context.seasonPlayerCache.put(cacheKey, seasonPlayer);
         } catch (Exception e) {
             System.out.println("ERROR creating SeasonPlayer for practicioner %s, club %s and season %s".formatted(practicioner.getFullName(), clubMember.getClub().getName(), seasonRange));
             System.out.println("  > "+e.getMessage());
         }
         return seasonPlayer;
+    }
+
+    private Optional<Club> findClubInPreloadedMap(Club inferredClub, ImportRunContext context, ImportMetrics metrics) {
+        Club club = context.clubsByNameMap.get(normalize(inferredClub.getName()));
+        if (club == null) {
+            metrics.clubLookupMiss++;
+            return Optional.empty();
+        }
+
+        metrics.clubLookupHit++;
+        return Optional.of(club);
+    }
+
+    private Optional<Practicioner> findPracticionerInPreloadedMap(Practicioner inferredPracticioner, ImportRunContext context, ImportMetrics metrics) {
+        Practicioner practicioner = context.practicionersByNameMap.get(normalizePersonName(inferredPracticioner.getFullName()));
+        if (practicioner == null) {
+            metrics.practicionerLookupMiss++;
+            return Optional.empty();
+        }
+
+        metrics.practicionerLookupHit++;
+        return Optional.of(practicioner);
+    }
+
+    private Map<String, Club> buildClubLookupMap(List<Club> allClubsList) {
+        Map<String, Club> clubsByNameMap = new HashMap<>();
+        for (Club club : allClubsList) {
+            clubsByNameMap.putIfAbsent(normalize(club.getName()), club);
+        }
+        return clubsByNameMap;
+    }
+
+    private Map<String, Practicioner> buildPracticionerLookupMap(List<Practicioner> allPracticionersList) {
+        Map<String, Practicioner> practicionersByNameMap = new HashMap<>();
+        for (Practicioner practicioner : allPracticionersList) {
+            practicionersByNameMap.putIfAbsent(normalizePersonName(practicioner.getFullName()), practicioner);
+        }
+        return practicionersByNameMap;
+    }
+
+    private void ensureClubMemberSeasonRange(ClubMember clubMember, ClubMemberCacheKey cacheKey, String seasonRange, ImportRunContext context, ImportMetrics metrics) {
+        if (context.clubMemberSeasonRangeUpdated.contains(cacheKey)) {
+            return;
+        }
+
+        clubMember.addYearRange(seasonRange);
+        clubMemberRepository.save(clubMember);
+        metrics.clubMemberSaved++;
+        context.clubMemberSeasonRangeUpdated.add(cacheKey);
+    }
+
+    private void printImportMetrics(ImportMetrics metrics, ImportRunContext context) {
+        System.out.println("BCNESA Phase1 metrics: rows total=" + metrics.rowsTotal
+                + ", processed=" + metrics.rowsProcessed
+                + ", skippedPlayerD=" + metrics.rowsSkippedPlayerD
+                + ", skippedInferenceMiss=" + metrics.rowsSkippedInferenceMiss
+                + ", rowExceptions=" + metrics.rowExceptions);
+
+        System.out.println("BCNESA Phase1 lookup: club hit/miss=" + metrics.clubLookupHit + "/" + metrics.clubLookupMiss
+                + ", practicioner hit/miss=" + metrics.practicionerLookupHit + "/" + metrics.practicionerLookupMiss);
+
+        System.out.println("BCNESA Phase1 cache: clubMember hit/miss=" + metrics.clubMemberCacheHit + "/" + metrics.clubMemberCacheMiss
+                + ", seasonPlayer hit/miss=" + metrics.seasonPlayerCacheHit + "/" + metrics.seasonPlayerCacheMiss
+                + ", seasonPlayerResult hit/miss=" + metrics.seasonPlayerResultCacheHit + "/" + metrics.seasonPlayerResultCacheMiss
+                + ", singleMatch hit/miss=" + metrics.playersSingleMatchCacheHit + "/" + metrics.playersSingleMatchCacheMiss);
+
+        System.out.println("BCNESA Phase1 saves: clubMember=" + metrics.clubMemberSaved
+                + ", seasonPlayer=" + metrics.seasonPlayerSaved
+                + ", seasonPlayerResult=" + metrics.seasonPlayerResultSaved
+                + ", playersSingleMatch=" + metrics.playersSingleMatchSaved
+                + ", saveSkippedNoChange=" + metrics.saveSkippedNoChange
+                + ", inferenceMisses=" + metrics.inferenceMisses);
+
+        System.out.println("BCNESA Phase1 timingMs: preload=" + metrics.preloadMs
+                + ", rowLoop=" + metrics.rowLoopMs
+                + ", total=" + metrics.totalMs);
+
+        System.out.println("BCNESA Phase1 cacheSize: clubMember=" + context.clubMemberCache.size()
+                + ", seasonPlayer=" + context.seasonPlayerCache.size()
+                + ", seasonPlayerResult=" + context.seasonPlayerResultCache.size());
+    }
+
+    private static String normalizeId(Object id) {
+        return id == null ? "" : id.toString();
+    }
+
+    private static String normalizePersonName(String fullName) {
+        if (fullName == null) {
+            return "";
+        }
+        return fullName.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    private static final class ImportRunContext {
+        private final Map<String, Club> clubsByNameMap;
+        private final Map<String, Practicioner> practicionersByNameMap;
+        private final Map<ClubMemberCacheKey, ClubMember> clubMemberCache = new HashMap<>();
+        private final Set<ClubMemberCacheKey> clubMemberSeasonRangeUpdated = new HashSet<>();
+        private final Map<SeasonPlayerCacheKey, SeasonPlayer> seasonPlayerCache = new HashMap<>();
+        private final Map<SeasonPlayerResultCacheKey, SeasonPlayerResult> seasonPlayerResultCache = new HashMap<>();
+
+        private ImportRunContext(Map<String, Club> clubsByNameMap, Map<String, Practicioner> practicionersByNameMap) {
+            this.clubsByNameMap = clubsByNameMap;
+            this.practicionersByNameMap = practicionersByNameMap;
+        }
+    }
+
+    private static final class ImportMetrics {
+        private long rowsTotal;
+        private long rowsProcessed;
+        private long rowsSkippedPlayerD;
+        private long rowsSkippedInferenceMiss;
+        private long rowExceptions;
+        private long inferenceMisses;
+
+        private long clubLookupHit;
+        private long clubLookupMiss;
+        private long practicionerLookupHit;
+        private long practicionerLookupMiss;
+
+        private long clubMemberCacheHit;
+        private long clubMemberCacheMiss;
+        private long seasonPlayerCacheHit;
+        private long seasonPlayerCacheMiss;
+        private long seasonPlayerResultCacheHit;
+        private long seasonPlayerResultCacheMiss;
+        private long playersSingleMatchCacheHit;
+        private long playersSingleMatchCacheMiss;
+
+        private long clubMemberSaved;
+        private long seasonPlayerSaved;
+        private long seasonPlayerResultSaved;
+        private long playersSingleMatchSaved;
+        private long saveSkippedNoChange;
+
+        private long preloadMs;
+        private long rowLoopMs;
+        private long totalMs;
     }
 
     private String[] splitIntoFirstNameAndSecondName(String input) {
