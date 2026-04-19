@@ -6,23 +6,26 @@ import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailCsvFileRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.model.fs.FedespMatchResultsDetailRowInfo;
 import org.cttelsamicsterrassa.data.importer.csv_adapter.fedesp.shared.service.FedespCsvFileRowInfoExtractor;
-import org.cttelsamicsterrassa.data.importer.shared.model.PracticionerNameAndYearInfo;
 import org.cttelsamicsterrassa.data.importer.shared.service.CompletionTracker;
 import org.cttelsamicsterrassa.data.importer.shared.service.LineByLineInitialImportService;
 import org.cttelsamicsterrassa.data.importer.shared.service.MatchResultDetailsByLineIterator;
-import org.cttelsamicsterrassa.data.importer.shared.service.PracticionerNameGrouppingService;
 import org.cttelsamicsterrassa.data.importer.shared.service.PracticionerNameSimilarityService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 @Component
 public class FedespPracticionerInitialImportService extends
         LineByLineInitialImportService<FedespMatchResultsDetailCsvFileRowInfo, FedespMatchResultsDetailCsvFileInfo> {
+
+    private static final int WRITE_BATCH_SIZE = 100;
 
     private final PracticionerRepository practicionerRepository;
 
@@ -35,33 +38,92 @@ public class FedespPracticionerInitialImportService extends
         this.rowInfoExtractor = rowInfoExtractor;
     }
 
+    @Transactional
     public void processParacticionersForAllSeasons(String baseSeasonsFolder) throws IOException {
+        long fileDiscoveryStart = System.currentTimeMillis();
         resetAndLoadTextFilesForAllSeasons(baseSeasonsFolder);
-        importPracticioners();
+        long fileDiscoveryMs = System.currentTimeMillis() - fileDiscoveryStart;
+        importPracticioners(fileDiscoveryMs, "all seasons");
     }
 
+    @Transactional
     public void processPracticionersForSeason(String baseSeasonsFolder, String seasonRange) throws IOException {
+        long fileDiscoveryStart = System.currentTimeMillis();
         resetAndLoadTextFilesForSeason(baseSeasonsFolder, seasonRange);
-        importPracticioners();
+        long fileDiscoveryMs = System.currentTimeMillis() - fileDiscoveryStart;
+        importPracticioners(fileDiscoveryMs, "season " + seasonRange);
     }
 
-    private void importPracticioners() {
-        savePracticionersInfo(fetchCsvRowInfos());
+    private void importPracticioners(long fileDiscoveryMs, String scopeLabel) {
+        long fetchStart = System.currentTimeMillis();
+        List<FedespMatchResultsDetailCsvFileRowInfo> rows = fetchCsvRowInfos();
+        long fetchMs = System.currentTimeMillis() - fetchStart;
+
+        ImportStats stats = savePracticionersInfo(rows);
+
+        System.out.printf("[FEDESP][Practicioners] scope=%s fileDiscoveryMs=%d rowFetchMs=%d clusteringMs=%d persistenceMs=%d totalRows=%d clusteredNames=%d dbReads=%d dbWrites=%d inserted=%d skippedExisting=%d%n",
+                scopeLabel,
+                fileDiscoveryMs,
+                fetchMs,
+                stats.clusteringMs,
+                stats.persistenceMs,
+                rows.size(),
+                stats.clusteredNames,
+                stats.dbReads,
+                stats.dbWrites,
+                stats.inserted,
+                stats.skippedExisting
+        );
     }
 
-    private void savePracticionersInfo(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileRowInfos) {
+    private ImportStats savePracticionersInfo(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileRowInfos) {
+        long clusteringStart = System.currentTimeMillis();
         List<String> practicionersNamesList = extractPracticionersNames(fedespMatchResultsDetailCsvFileRowInfos);
+        long clusteringMs = System.currentTimeMillis() - clusteringStart;
+
+        Set<String> existingNames = new HashSet<>();
+        practicionerRepository.findAll().forEach(practicioner -> existingNames.add(practicioner.getFullName()));
+
+        ImportStats stats = new ImportStats();
+        stats.dbReads = 1;
+        stats.clusteredNames = practicionersNamesList.size();
+        stats.clusteringMs = clusteringMs;
 
         CompletionTracker completionTracker = CompletionTracker.buildTracker(practicionersNamesList.size(), 10, "Practicioner import");
+        long persistenceStart = System.currentTimeMillis();
+        List<Practicioner> practicionersToInsertBatch = new ArrayList<>(WRITE_BATCH_SIZE);
 
         practicionersNamesList.forEach(practicionerName -> {
-            Practicioner practicionerToCreate = Practicioner.createNew(practicionerName, practicionerName, practicionerName, new Date());
-            if (practicionerRepository.findByFullName(practicionerName).isEmpty()) {
-                practicionerRepository.save(practicionerToCreate);
+            if (existingNames.contains(practicionerName)) {
+                stats.skippedExisting++;
+            } else {
+                Practicioner practicionerToCreate = Practicioner.createNew(practicionerName, practicionerName, practicionerName, new Date());
+                practicionersToInsertBatch.add(practicionerToCreate);
+                existingNames.add(practicionerName);
+                stats.inserted++;
+
+                if (practicionersToInsertBatch.size() >= WRITE_BATCH_SIZE) {
+                    persistPracticionersBatch(practicionersToInsertBatch, stats);
+                }
             }
 
             completionTracker.trackIncrement();
         });
+
+        persistPracticionersBatch(practicionersToInsertBatch, stats);
+
+        stats.persistenceMs = System.currentTimeMillis() - persistenceStart;
+        return stats;
+    }
+
+    private void persistPracticionersBatch(List<Practicioner> practicionersToInsertBatch, ImportStats stats) {
+        if (practicionersToInsertBatch.isEmpty()) {
+            return;
+        }
+
+        practicionersToInsertBatch.forEach(practicionerRepository::save);
+        stats.dbWrites += practicionersToInsertBatch.size();
+        practicionersToInsertBatch.clear();
     }
 
     private List<String> extractPracticionersNames(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileRowInfos) {
@@ -78,28 +140,14 @@ public class FedespPracticionerInitialImportService extends
                 .distinct().toList());
     }
 
-    private Map<String, List<String>> extractPracticionersNamesAndYears(List<FedespMatchResultsDetailCsvFileRowInfo> fedespMatchResultsDetailCsvFileRowInfos) {
 
-        List<PracticionerNameAndYearInfo> list = fedespMatchResultsDetailCsvFileRowInfos.stream()
-                .map(rowInfo -> {
-                    FedespMatchResultsDetailRowInfo fedespMatchResultsDetailRowInfo = rowInfoExtractor.extractMatchDetailsRowInfo(rowInfo);
-                    String localPracticionerName = fedespMatchResultsDetailRowInfo.localPlayer().playerName();
-                    PracticionerNameAndYearInfo localPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
-                            localPracticionerName,
-                            rowInfo.fileInfo().season()
-                    );
-                    String visitorPracticionerName = fedespMatchResultsDetailRowInfo.visitorPlayer().playerName();
-                    PracticionerNameAndYearInfo visitorPracticionerNameAndYearInfo = new PracticionerNameAndYearInfo(
-                            visitorPracticionerName,
-                            rowInfo.fileInfo().season()
-                    );
-
-                    return List.of(localPracticionerNameAndYearInfo, visitorPracticionerNameAndYearInfo);
-                })
-                .flatMap(List::stream)
-                .filter(practicionerNameAndYearInfo -> practicionerNameAndYearInfo.practicionerName().toLowerCase().contains("campos"))
-                .toList();
-
-        return PracticionerNameGrouppingService.groupByCommonRoot(list);
+    private static final class ImportStats {
+        private int clusteredNames;
+        private long clusteringMs;
+        private long persistenceMs;
+        private int dbReads;
+        private int dbWrites;
+        private int inserted;
+        private int skippedExisting;
     }
 }
